@@ -94,8 +94,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   useEffect(() => {
     const lockOrientation = async () => {
       try {
-        const orientation = screen.orientation as ExtendedScreenOrientation | undefined;
-        if (orientation && orientation.lock) {
+        const orientation = screen.orientation as unknown as ExtendedScreenOrientation | undefined;
+        if (orientation && 'lock' in orientation && orientation.lock) {
           if (isLandscapeExercise) {
             await orientation.lock('landscape');
             console.log('🔒 Locked to LANDSCAPE mode');
@@ -114,8 +114,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
 
     return () => {
       // Unlock orientation when leaving
-      const orientation = screen.orientation as ExtendedScreenOrientation | undefined;
-      if (orientation && orientation.unlock) {
+      const orientation = screen.orientation as unknown as ExtendedScreenOrientation | undefined;
+      if (orientation && 'unlock' in orientation && orientation.unlock) {
         orientation.unlock();
       }
     };
