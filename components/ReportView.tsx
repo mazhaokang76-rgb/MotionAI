@@ -15,46 +15,104 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
 
   useEffect(() => {
     const fetchReport = async () => {
-        console.log('[ReportView] 📊 Starting report fetch...');
+        console.log('='.repeat(60));
+        console.log('🏁 [ReportView] 开始生成报告');
+        console.log('='.repeat(60));
+        
+        // 详细打印接收到的数据
+        console.log('📊 [ReportView] 接收到的 session 数据:');
+        console.log('  - exerciseId:', session.exerciseId);
+        console.log('  - duration:', session.duration, '秒');
+        console.log('  - accuracyScore:', session.accuracyScore.toFixed(1), '分');
+        console.log('  - correctionCount:', session.correctionCount, '次');
+        console.log('  - feedbackLog 长度:', session.feedbackLog?.length || 0);
+        console.log('  - timestamp:', new Date(session.timestamp).toLocaleString());
+        
+        console.log('🎯 [ReportView] 接收到的 exercise 数据:');
+        console.log('  - id:', exercise.id);
+        console.log('  - name:', exercise.name);
+        console.log('  - description:', exercise.description);
+        console.log('  - durationSec:', exercise.durationSec);
+        
         setIsLoading(true);
         setLoadError(false);
         
         try {
+            console.log('📤 [ReportView] 调用 generateWorkoutReport...');
+            console.log('传递参数:', {
+                session: {
+                    duration: session.duration,
+                    score: session.accuracyScore,
+                    corrections: session.correctionCount
+                },
+                exercise: {
+                    name: exercise.name,
+                    description: exercise.description
+                }
+            });
+            
             const jsonStr = await generateWorkoutReport(session, exercise);
-            console.log('[ReportView] 📦 Received JSON:', jsonStr);
+            
+            console.log('📦 [ReportView] 收到响应:');
+            console.log('  - 响应类型:', typeof jsonStr);
+            console.log('  - 响应长度:', jsonStr?.length || 0);
+            console.log('  - 响应内容:', jsonStr);
+            
+            if (!jsonStr || jsonStr.trim() === '') {
+                throw new Error('AI 服务返回空响应');
+            }
             
             const parsed = JSON.parse(jsonStr);
-            console.log('[ReportView] ✅ Parsed successfully:', parsed);
+            console.log('✅ [ReportView] JSON 解析成功:');
+            console.log('  - summary:', parsed.summary);
+            console.log('  - analysis:', parsed.analysis);
+            console.log('  - tip:', parsed.tip);
             
-            // Validate and set
-            if (parsed.summary && parsed.analysis && parsed.tip) {
-                setAiReport(parsed);
-                setLoadError(false);
-            } else {
-                console.warn('[ReportView] ⚠️ Incomplete report structure');
+            // 验证数据完整性
+            if (!parsed.summary || !parsed.analysis || !parsed.tip) {
+                console.warn('⚠️ [ReportView] 报告数据不完整');
+                console.log('缺失字段:', {
+                    summary: !!parsed.summary,
+                    analysis: !!parsed.analysis,
+                    tip: !!parsed.tip
+                });
+                
+                // 尝试修复不完整的数据
                 setAiReport({
                     summary: parsed.summary || "训练完成",
                     analysis: parsed.analysis || "数据处理中",
                     tip: parsed.tip || "继续训练"
                 });
                 setLoadError(true);
+            } else {
+                console.log('✅ [ReportView] 报告数据完整，设置状态');
+                setAiReport(parsed);
+                setLoadError(false);
             }
             
-        } catch (error) {
-            console.error('[ReportView] ❌ Fatal error:', error);
+        } catch (error: any) {
+            console.error('❌ [ReportView] 报告生成失败:');
+            console.error('  - 错误类型:', error.name);
+            console.error('  - 错误消息:', error.message);
+            console.error('  - 错误堆栈:', error.stack);
+            
             setLoadError(true);
             
-            // Emergency fallback
-            setAiReport({
-                summary: `完成训练,评分 ${Math.round(session.accuracyScore)} 分`,
+            // 紧急备用方案
+            const fallbackReport = {
+                summary: `完成训练，评分 ${Math.round(session.accuracyScore)} 分`,
                 analysis: session.correctionCount > 5 
-                    ? "有一些姿势问题,建议放慢速度。" 
-                    : "整体表现良好,继续保持。",
-                tip: "训练前充分热身,注意核心收紧。"
-            });
+                    ? "有一些姿势问题，建议放慢速度。" 
+                    : "整体表现良好，继续保持。",
+                tip: "训练前充分热身，注意核心收紧。"
+            };
+            
+            console.log('💾 [ReportView] 使用紧急备用方案:', fallbackReport);
+            setAiReport(fallbackReport);
         } finally {
             setIsLoading(false);
-            console.log('[ReportView] 🏁 Report fetch complete');
+            console.log('🏁 [ReportView] 报告获取流程结束');
+            console.log('='.repeat(60));
         }
     };
     
@@ -99,7 +157,7 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
                 <h3 className="text-indigo-300 font-bold mb-4 flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${isLoading ? 'bg-indigo-400 animate-pulse' : loadError ? 'bg-yellow-400' : 'bg-green-400'}`}></span>
                     AI 治疗师点评
-                    {loadError && <span className="text-xs text-yellow-400">(离线模式)</span>}
+                    {loadError && <span className="text-xs text-yellow-400">(智能备用)</span>}
                 </h3>
 
                 {isLoading ? (
@@ -140,7 +198,19 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
                 <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3 mb-4 text-xs">
                     <p className="text-yellow-300 font-semibold mb-1">⚠️ 调试信息</p>
                     <p className="text-yellow-200/70">评分: {session.accuracyScore.toFixed(1)} | 矫正: {session.correctionCount}次</p>
-                    <p className="text-yellow-200/70 mt-1">请检查浏览器控制台查看详细错误</p>
+                    <p className="text-yellow-200/70 mt-1">时长: {session.duration}秒 | 项目: {exercise.name}</p>
+                    <p className="text-yellow-200/70 mt-1">请打开浏览器控制台查看详细日志</p>
+                    <button 
+                        onClick={() => {
+                            console.log('=== 手动触发数据检查 ===');
+                            console.log('Session:', session);
+                            console.log('Exercise:', exercise);
+                            console.log('AI Report:', aiReport);
+                        }}
+                        className="mt-2 text-yellow-300 underline hover:text-yellow-200"
+                    >
+                        点击输出调试数据到控制台
+                    </button>
                 </div>
             )}
 
@@ -155,5 +225,4 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
   );
 };
 
-// 确保有默认导出
 export default ReportView;
