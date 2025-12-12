@@ -49,7 +49,7 @@ export const generateWorkoutReport = async (
 
     console.log('📤 Sending request to Gemini API...');
 
-    const response = await ai.models.generate({
+    const response = await ai.generateContent({
       model: 'gemini-2.0-flash-exp',
       contents: prompt,
     });
@@ -130,12 +130,10 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
 
     console.log('📤 Requesting pre-workout tips...');
 
-    const model = ai.models.generate({
+    const response = await ai.generateContent({
       model: 'gemini-2.0-flash-exp',
       contents: prompt,
     });
-
-    const response = await model;
     const text = response.text?.trim() || '';
     
     return text || getFallbackPreWorkoutTip(exerciseName);
