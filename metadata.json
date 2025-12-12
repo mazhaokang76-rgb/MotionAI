@@ -1,0 +1,8 @@
+{
+  "name": "RehabMotion AI",
+  "description": "智缘益慷无传感器实时动作捕捉纠正系统 V1.0",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
