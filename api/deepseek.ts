@@ -36,10 +36,16 @@ export default async function handler(
     // 解析请求体
     let requestBody;
     try {
-      const requestText = await req.text();
-      requestBody = JSON.parse(requestText);
+      // Vercel 自动解析 JSON 请求体到 req.body
+      requestBody = req.body;
+      
+      // 如果 body 是字符串，尝试解析
+      if (typeof requestBody === 'string') {
+        requestBody = JSON.parse(requestBody);
+      }
     } catch (parseError) {
       console.error('[DeepSeek API] Failed to parse request body:', parseError);
+      console.error('[DeepSeek API] Request body:', req.body);
       res.status(400).json({ error: 'Invalid JSON in request body' });
       return;
     }
