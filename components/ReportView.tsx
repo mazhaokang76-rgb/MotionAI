@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ExerciseConfig, WorkoutSession } from '../types';
-import { generateWorkoutReport } from '../services/deepseekService';
+import { generateWorkoutReport } from '../services/aiService';
 
 interface ReportViewProps {
   session: WorkoutSession;
