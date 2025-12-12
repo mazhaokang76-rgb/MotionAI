@@ -20,7 +20,7 @@ const checkAPIConfig = () => {
   log('DeepSeek 端点:', getAPIEndpoint('deepseek'));
   log('Gemini 端点:', getAPIEndpoint('gemini'));
   
-  // 总是假设配置了，因为实际检查在服务端
+  // API 端点已实现，可以启用 DeepSeek
   return { hasDeepSeek: true, hasGemini: true };
 };
 
@@ -46,8 +46,28 @@ const callDeepSeek = async (messages: Array<{role: string, content: string}>): P
 
     log('📡 [DeepSeek] Response:', response.status, response.statusText);
 
+    // 获取原始响应文本用于调试
+    const responseText = await response.text();
+    log('📄 [DeepSeek] 原始响应预览:', responseText.substring(0, 100));
+    
+    // 检查是否返回 HTML 页面（错误页面）
+    if (responseText.includes('<html') || 
+        responseText.includes('<!DOCTYPE') || 
+        responseText.includes('The page') ||
+        responseText.includes('404') ||
+        responseText.includes('500')) {
+      error('[DeepSeek] API 返回了 HTML 错误页面');
+      error('这通常表示端点不存在或服务器错误');
+      throw new Error(`DeepSeek API 端点不可用 (${response.status}): 请检查 /api/deepseek 端点配置`);
+    }
+
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch {
+        errorData = { error: `非 JSON 响应 (${response.status})`, message: responseText };
+      }
       error('[DeepSeek] 请求失败:', errorData);
       
       if (response.status === 401 || response.status === 500) {
@@ -61,7 +81,15 @@ const callDeepSeek = async (messages: Array<{role: string, content: string}>): P
       }
     }
 
-    const data = await response.json();
+    // 现在解析 JSON（已经检查过不是 HTML）
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      error('[DeepSeek] JSON 解析失败:', parseError);
+      error('响应内容:', responseText.substring(0, 200));
+      throw new Error('DeepSeek API 返回了无法解析的响应');
+    }
     
     if (!data.success || !data.content) {
       error('[DeepSeek] 响应格式错误:', data);
@@ -96,8 +124,28 @@ const callGemini = async (prompt: string): Promise<string> => {
 
     log('📡 [Gemini] Response:', response.status, response.statusText);
 
+    // 获取原始响应文本用于调试
+    const responseText = await response.text();
+    log('📄 [Gemini] 原始响应预览:', responseText.substring(0, 100));
+    
+    // 检查是否返回 HTML 页面（错误页面）
+    if (responseText.includes('<html') || 
+        responseText.includes('<!DOCTYPE') || 
+        responseText.includes('The page') ||
+        responseText.includes('404') ||
+        responseText.includes('500')) {
+      error('[Gemini] API 返回了 HTML 错误页面');
+      error('这通常表示端点不存在或服务器错误');
+      throw new Error(`Gemini API 端点不可用 (${response.status}): 请检查 /api/gemini 端点配置`);
+    }
+
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch {
+        errorData = { error: `非 JSON 响应 (${response.status})`, message: responseText };
+      }
       error('[Gemini] 请求失败:', errorData);
       
       if (response.status === 400) {
@@ -111,7 +159,15 @@ const callGemini = async (prompt: string): Promise<string> => {
       }
     }
 
-    const data = await response.json();
+    // 现在解析 JSON（已经检查过不是 HTML）
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      error('[Gemini] JSON 解析失败:', parseError);
+      error('响应内容:', responseText.substring(0, 200));
+      throw new Error('Gemini API 返回了无法解析的响应');
+    }
     
     if (!data.success || !data.content) {
       error('[Gemini] 响应格式错误:', data);
