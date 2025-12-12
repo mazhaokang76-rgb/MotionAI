@@ -36,7 +36,8 @@ export default async function handler(
     // 解析请求体
     let requestBody;
     try {
-      requestBody = await req.json();
+      const requestText = await req.text();
+      requestBody = JSON.parse(requestText);
     } catch (parseError) {
       console.error('[DeepSeek API] Failed to parse request body:', parseError);
       res.status(400).json({ error: 'Invalid JSON in request body' });
