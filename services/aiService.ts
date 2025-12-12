@@ -20,7 +20,7 @@ const checkAPIConfig = () => {
   log('DeepSeek 端点:', getAPIEndpoint('deepseek'));
   log('Gemini 端点:', getAPIEndpoint('gemini'));
   
-  // API 端点已实现，可以启用 DeepSeek
+  // DeepSeek API 端点已准备就绪
   return { hasDeepSeek: true, hasGemini: true };
 };
 
