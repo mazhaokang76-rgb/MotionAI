@@ -1,14 +1,17 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { WorkoutSession, ExerciseConfig } from "../types";
 
-// Initialize Gemini Client
-const getAIClient = () => {
+// Gemini API 配置
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const MODEL_NAME = 'gemini-2.0-flash-exp';
+
+// Initialize Gemini API
+const getGeminiApiKey = () => {
   const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
   if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
     console.warn('⚠️ Gemini API Key not configured properly');
     return null;
   }
-  return new GoogleGenerativeAI({ apiKey });
+  return apiKey;
 };
 
 export const generateWorkoutReport = async (
@@ -23,10 +26,10 @@ export const generateWorkoutReport = async (
   });
 
   try {
-    const ai = getAIClient();
-    if (!ai) {
-      console.warn('⚠️ AI client not available, using fallback');
-      throw new Error('API client not initialized');
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) {
+      console.warn('⚠️ API key not available, using fallback');
+      throw new Error('API key not configured');
     }
 
     const prompt = `你是一名经验丰富的康复物理治疗师，分析病人训练动作并用中文给出评价及指导意见。
@@ -49,10 +52,32 @@ export const generateWorkoutReport = async (
 
     console.log('📤 Sending request to Gemini API...');
 
-    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text()?.trim() || '';
+    const url = `${GEMINI_API_BASE}/${MODEL_NAME}:generateContent?key=${apiKey}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 1024,
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
     console.log('📥 Raw response:', text);
 
@@ -112,8 +137,8 @@ export const generateWorkoutReport = async (
 
 export const generatePreWorkoutTips = async (exerciseName: string): Promise<string> => {
   try {
-    const ai = getAIClient();
-    if (!ai) {
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) {
       return getFallbackPreWorkoutTip(exerciseName);
     }
 
@@ -128,10 +153,32 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
 
     console.log('📤 Requesting pre-workout tips...');
 
-    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text()?.trim() || '';
+    const url = `${GEMINI_API_BASE}/${MODEL_NAME}:generateContent?key=${apiKey}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 512,
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
     return text || getFallbackPreWorkoutTip(exerciseName);
 
