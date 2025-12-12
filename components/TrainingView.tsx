@@ -4,6 +4,24 @@ import { initializeVision, detectPose, calculateAngle, checkTorsoAlignment } fro
 import { PoseLandmarkerResult } from "@mediapipe/tasks-vision";
 import { SKELETON_CONNECTIONS } from '../constants';
 
+// 扩展 ScreenOrientation 类型
+declare global {
+  interface ScreenOrientation {
+    lock(orientation: 'portrait' | 'landscape' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary'): Promise<void>;
+    unlock(): void;
+    type: string;
+    angle: number;
+  }
+}
+
+// 扩展 HTMLVideoElement 类型
+declare global {
+  interface HTMLVideoElement {
+    mozHasAudio?: boolean;
+    webkitAudioDecodedByteCount?: number;
+  }
+}
+
 interface TrainingViewProps {
   exercise: ExerciseConfig;
   onComplete: (session: WorkoutSession) => void;
@@ -383,7 +401,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                   console.log('📹 Video loaded:', {
                     duration: video.duration,
                     dimensions: `${video.videoWidth}x${video.videoHeight}`,
-                    hasAudio: video.mozHasAudio || video.webkitAudioDecodedByteCount > 0
+                    hasAudio: video.mozHasAudio || (video as any).webkitAudioDecodedByteCount > 0
                   });
                 }}
              />
