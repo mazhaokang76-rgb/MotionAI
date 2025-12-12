@@ -5,121 +5,70 @@ const DEBUG = true;
 const log = (...args: any[]) => DEBUG && console.log('[AI Service]', ...args);
 const error = (...args: any[]) => console.error('[AI Service] ❌', ...args);
 
-// ===== API 配置 =====
-const API_CONFIG = {
-  deepseek: {
-    url: 'https://api.deepseek.com/chat/completions',
-    model: 'deepseek-chat',
-  },
-  gemini: {
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
-    model: 'gemini-2.0-flash-exp',
-  }
+// ===== API 端点配置 =====
+const getAPIEndpoint = (service: 'deepseek' | 'gemini') => {
+  // 在生产环境使用相对路径，本地开发可能需要完整 URL
+  const baseUrl = window.location.origin;
+  return `${baseUrl}/api/${service}`;
 };
 
-// ===== 获取 API Key (Vercel 兼容版本) =====
-const getAPIKeys = () => {
-  // 尝试多种方式获取环境变量
-  // 1. Vite 方式 (本地开发)
-  // 2. import.meta.env (Vercel 构建时)
-  // 3. 全局变量 (运行时注入)
+// ===== 检查 API 配置 =====
+const checkAPIConfig = () => {
+  // 在服务端，环境变量会被读取
+  // 在客户端，我们只需要知道是否配置了
+  log('🔑 检查 API 配置...');
+  log('DeepSeek 端点:', getAPIEndpoint('deepseek'));
+  log('Gemini 端点:', getAPIEndpoint('gemini'));
   
-  let deepseekKey = '';
-  let geminiKey = '';
-  
-  // 方式 1: import.meta.env (推荐)
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    deepseekKey = import.meta.env.VITE_DEEPSEEK_API_KEY || '';
-    geminiKey = import.meta.env.VITE_GEMINI_API_KEY || 
-                import.meta.env.VITE_API_KEY || '';
-  }
-  
-  // 方式 2: 全局变量 (Vercel 运行时注入)
-  if (typeof window !== 'undefined') {
-    // @ts-ignore
-    deepseekKey = deepseekKey || window.__ENV__?.VITE_DEEPSEEK_API_KEY || '';
-    // @ts-ignore
-    geminiKey = geminiKey || window.__ENV__?.VITE_GEMINI_API_KEY || 
-                // @ts-ignore
-                window.__ENV__?.VITE_API_KEY || '';
-  }
-  
-  // 调试：显示环境变量状态
-  log('🔑 环境变量检查:');
-  log('- import.meta.env 可用:', typeof import.meta !== 'undefined');
-  log('- DeepSeek Key 长度:', deepseekKey.length);
-  log('- Gemini Key 长度:', geminiKey.length);
-  
-  if (deepseekKey.length > 0) {
-    log('✅ DeepSeek Key:', `${deepseekKey.substring(0, 7)}...${deepseekKey.slice(-4)}`);
-  } else {
-    log('❌ DeepSeek Key 未配置');
-  }
-  
-  if (geminiKey.length > 0) {
-    log('✅ Gemini Key:', `${geminiKey.substring(0, 7)}...${geminiKey.slice(-4)}`);
-  } else {
-    log('❌ Gemini Key 未配置');
-  }
-  
-  return { deepseekKey, geminiKey };
+  // 总是假设配置了，因为实际检查在服务端
+  return { hasDeepSeek: true, hasGemini: true };
 };
 
-// ===== DeepSeek API 调用 =====
+// ===== DeepSeek API 调用 (通过代理) =====
 const callDeepSeek = async (messages: Array<{role: string, content: string}>): Promise<string> => {
-  const { deepseekKey } = getAPIKeys();
-  
-  if (!deepseekKey || deepseekKey.length < 10) {
-    throw new Error('DeepSeek API Key 未配置或无效');
-  }
-
-  log('📤 [DeepSeek] 发送请求...');
-  log('📤 [DeepSeek] URL:', API_CONFIG.deepseek.url);
+  log('📤 [DeepSeek] 通过代理发送请求...');
   log('📤 [DeepSeek] Messages:', messages.length, '条');
 
   try {
-    const response = await fetch(API_CONFIG.deepseek.url, {
+    const endpoint = getAPIEndpoint('deepseek');
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${deepseekKey}`
       },
       body: JSON.stringify({
-        model: API_CONFIG.deepseek.model,
         messages: messages,
-        max_tokens: 1000,
         temperature: 0.7,
-        response_format: { type: "json_object" }
+        max_tokens: 1000
       })
     });
 
     log('📡 [DeepSeek] Response:', response.status, response.statusText);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      error('[DeepSeek] 请求失败:', errorText);
+      const errorData = await response.json();
+      error('[DeepSeek] 请求失败:', errorData);
       
-      if (response.status === 401) {
-        throw new Error('DeepSeek API Key 无效或已过期');
+      if (response.status === 401 || response.status === 500) {
+        throw new Error(errorData.hint || 'DeepSeek API Key 未配置或无效');
       } else if (response.status === 429) {
         throw new Error('请求过于频繁，请稍后再试');
       } else if (response.status === 402) {
         throw new Error('DeepSeek 账户余额不足');
       } else {
-        throw new Error(`DeepSeek API Error: ${response.status} - ${errorText.substring(0, 200)}`);
+        throw new Error(errorData.error || `API Error: ${response.status}`);
       }
     }
 
     const data = await response.json();
-    log('📦 [DeepSeek] 响应数据:', data);
     
-    const content = data.choices?.[0]?.message?.content || '';
-    
-    if (!content) {
-      error('[DeepSeek] 响应中没有内容');
+    if (!data.success || !data.content) {
+      error('[DeepSeek] 响应格式错误:', data);
       throw new Error('DeepSeek 返回空内容');
     }
     
+    const content = data.content;
     log('✅ [DeepSeek] 响应长度:', content.length);
     log('📄 [DeepSeek] 响应预览:', content.substring(0, 100));
     
@@ -130,65 +79,46 @@ const callDeepSeek = async (messages: Array<{role: string, content: string}>): P
   }
 };
 
-// ===== Gemini API 调用 =====
+// ===== Gemini API 调用 (通过代理) =====
 const callGemini = async (prompt: string): Promise<string> => {
-  const { geminiKey } = getAPIKeys();
-  
-  if (!geminiKey || geminiKey.length < 10) {
-    throw new Error('Gemini API Key 未配置或无效');
-  }
-
-  log('📤 [Gemini] 发送请求...');
-  log('📤 [Gemini] URL:', API_CONFIG.gemini.url);
+  log('📤 [Gemini] 通过代理发送请求...');
 
   try {
-    const url = `${API_CONFIG.gemini.url}?key=${geminiKey}`;
+    const endpoint = getAPIEndpoint('gemini');
     
-    const response = await fetch(url, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1024,
-        }
-      })
+      body: JSON.stringify({ prompt })
     });
 
     log('📡 [Gemini] Response:', response.status, response.statusText);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      error('[Gemini] 请求失败:', errorText);
+      const errorData = await response.json();
+      error('[Gemini] 请求失败:', errorData);
       
       if (response.status === 400) {
         throw new Error('Gemini API 请求格式错误');
-      } else if (response.status === 403) {
-        throw new Error('Gemini API Key 无效或无权限');
+      } else if (response.status === 403 || response.status === 500) {
+        throw new Error(errorData.hint || 'Gemini API Key 无效或无权限');
       } else if (response.status === 429) {
         throw new Error('Gemini API 配额已用完');
       } else {
-        throw new Error(`Gemini API Error: ${response.status} - ${errorText.substring(0, 200)}`);
+        throw new Error(errorData.error || `API Error: ${response.status}`);
       }
     }
 
     const data = await response.json();
-    log('📦 [Gemini] 响应数据:', data);
     
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    
-    if (!content) {
-      error('[Gemini] 响应中没有内容');
+    if (!data.success || !data.content) {
+      error('[Gemini] 响应格式错误:', data);
       throw new Error('Gemini 返回空内容');
     }
     
+    const content = data.content;
     log('✅ [Gemini] 响应长度:', content.length);
     log('📄 [Gemini] 响应预览:', content.substring(0, 100));
     
@@ -234,37 +164,32 @@ export const generateWorkoutReport = async (
   session: WorkoutSession,
   exerciseConfig: ExerciseConfig
 ): Promise<string> => {
-  log('🚀 ============ 开始生成训练报告 ============');
-  log('📊 训练数据:', {
-    exercise: exerciseConfig.name,
-    duration: session.duration,
-    score: session.accuracyScore.toFixed(1),
-    corrections: session.correctionCount,
-    timestamp: new Date().toISOString()
-  });
+  console.log(''); // 空行分隔
+  console.log('🚀 ============ AI 服务：开始生成训练报告 ============');
+  console.log('⏰ 时间:', new Date().toLocaleString());
+  console.log('');
+  console.log('📊 接收到的训练数据:');
+  console.log('  训练项目:', exerciseConfig.name);
+  console.log('  项目说明:', exerciseConfig.description);
+  console.log('  训练时长:', session.duration, '秒');
+  console.log('  动作评分:', session.accuracyScore.toFixed(1), '分 (满分100)');
+  console.log('  纠正次数:', session.correctionCount, '次');
+  console.log('  反馈记录:', session.feedbackLog?.length || 0, '条');
+  console.log('');
 
-  const { deepseekKey, geminiKey } = getAPIKeys();
-
-  // 检查是否有任何可用的 API Key
-  const hasDeepSeek = deepseekKey && deepseekKey.length > 10;
-  const hasGemini = geminiKey && geminiKey.length > 10;
+  const { hasDeepSeek, hasGemini } = checkAPIConfig();
   
-  log('🔑 API Key 状态:', {
-    hasDeepSeek,
-    hasGemini
-  });
-
-  if (!hasDeepSeek && !hasGemini) {
-    log('⚠️ 未配置任何有效的 API Key');
-    log('💡 提示: 请在 Vercel 中配置 VITE_DEEPSEEK_API_KEY 或 VITE_GEMINI_API_KEY');
-    log('💾 使用智能备用方案');
-    return JSON.stringify(generateFallbackReport(session, exerciseConfig));
-  }
+  console.log('🔑 API 配置状态:');
+  console.log('  DeepSeek:', hasDeepSeek ? '✅ 可用' : '❌ 不可用');
+  console.log('  Gemini:', hasGemini ? '✅ 可用' : '❌ 不可用');
+  console.log('');
 
   // 优先使用 DeepSeek
   if (hasDeepSeek) {
     try {
-      log('🎯 尝试使用 DeepSeek...');
+      console.log('🎯 策略: 优先使用 DeepSeek API');
+      console.log('📤 正在构建请求...');
+      console.log('');
       
       const messages = [
         {
@@ -293,29 +218,56 @@ export const generateWorkoutReport = async (
       ];
 
       const responseText = await callDeepSeek(messages);
-      const cleanedText = cleanJSON(responseText);
+      console.log('');
+      console.log('📥 收到 DeepSeek 响应');
+      console.log('  响应长度:', responseText.length, '字符');
+      console.log('  响应预览:', responseText.substring(0, 150));
+      console.log('');
       
+      const cleanedText = cleanJSON(responseText);
+      console.log('🧹 清理后的 JSON:');
+      console.log('  ', cleanedText);
+      console.log('');
+      
+      console.log('🔍 开始解析 JSON...');
       const parsed = JSON.parse(cleanedText);
+      console.log('✅ JSON 解析成功');
+      console.log('');
       
       if (validateReport(parsed)) {
-        log('✅ DeepSeek 报告生成成功');
-        log('📋 报告内容:', parsed);
+        console.log('✅ 报告验证通过');
+        console.log('📋 最终报告内容:');
+        console.log('  综合表现:', parsed.summary);
+        console.log('  主要问题:', parsed.analysis);
+        console.log('  改进建议:', parsed.tip);
+        console.log('');
+        console.log('🏁 ============ DeepSeek 报告生成成功 ============');
+        console.log('');
+        
         return JSON.stringify(parsed);
       } else {
-        log('⚠️ DeepSeek 返回的报告结构不完整');
+        console.log('⚠️ DeepSeek 返回的报告结构不完整');
         throw new Error('报告结构不完整');
       }
       
     } catch (err: any) {
-      error('❌ DeepSeek 失败:', err.message);
-      error('详细错误:', err);
+      console.error('❌ DeepSeek 调用失败');
+      console.error('  错误类型:', err.name);
+      console.error('  错误消息:', err.message);
+      console.error('');
       
       // 如果有 Gemini，尝试使用
       if (hasGemini) {
-        log('🔄 切换到 Gemini 备用方案...');
+        console.log('🔄 切换到 Gemini 备用方案...');
+        console.log('');
       } else {
-        log('💾 使用智能备用方案');
-        return JSON.stringify(generateFallbackReport(session, exerciseConfig));
+        console.log('💾 使用智能备用方案');
+        console.log('');
+        const fallbackReport = generateFallbackReport(session, exerciseConfig);
+        console.log('📋 备用报告:', fallbackReport);
+        console.log('🏁 ============ 报告生成完成 (备用方案) ============');
+        console.log('');
+        return JSON.stringify(fallbackReport);
       }
     }
   }
@@ -323,7 +275,7 @@ export const generateWorkoutReport = async (
   // 备用：使用 Gemini
   if (hasGemini) {
     try {
-      log('🎯 尝试使用 Gemini...');
+      console.log('🎯 尝试使用 Gemini...');
       
       const prompt = `你是康复治疗师，分析训练数据并返回JSON评价。
 
@@ -344,25 +296,27 @@ export const generateWorkoutReport = async (
       const responseText = await callGemini(prompt);
       const cleanedText = cleanJSON(responseText);
       
+      console.log('🧹 清理后的响应:', cleanedText);
+      
       const parsed = JSON.parse(cleanedText);
       
       if (validateReport(parsed)) {
-        log('✅ Gemini 报告生成成功');
-        log('📋 报告内容:', parsed);
+        console.log('✅ Gemini 报告生成成功');
+        console.log('📋 报告内容:', parsed);
         return JSON.stringify(parsed);
       } else {
-        log('⚠️ Gemini 返回的报告结构不完整');
+        console.log('⚠️ Gemini 返回的报告结构不完整');
         throw new Error('报告结构不完整');
       }
       
     } catch (err: any) {
-      error('❌ Gemini 也失败:', err.message);
-      error('详细错误:', err);
+      console.error('❌ Gemini 也失败:', err.message);
+      console.error('详细错误:', err);
     }
   }
 
   // 最终备用方案
-  log('💾 所有 AI 服务均失败，使用智能备用报告');
+  console.log('💾 所有 AI 服务均失败，使用智能备用报告');
   return JSON.stringify(generateFallbackReport(session, exerciseConfig));
 };
 
@@ -406,42 +360,20 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
 export const generatePreWorkoutTips = async (exerciseName: string): Promise<string> => {
   log('💡 生成训练前提示:', exerciseName);
   
-  const { deepseekKey, geminiKey } = getAPIKeys();
-  
-  const hasDeepSeek = deepseekKey && deepseekKey.length > 10;
-  const hasGemini = geminiKey && geminiKey.length > 10;
-
-  if (!hasDeepSeek && !hasGemini) {
-    log('⚠️ 无可用 API，使用备用提示');
-    return getFallbackTips(exerciseName);
-  }
-
   try {
-    if (hasDeepSeek) {
-      log('🎯 使用 DeepSeek 生成提示...');
-      const messages = [
-        { role: "system", content: "你是康复专家，提供简洁安全提示。" },
-        { role: "user", content: `为"${exerciseName}"提供3条简短安全提示(每条不超过12字，一行一条，无序号):` }
-      ];
-      
-      const response = await callDeepSeek(messages);
-      if (response && response.trim().length > 0) {
-        log('✅ DeepSeek 提示生成成功');
-        return response.trim();
-      }
-    }
+    log('🎯 使用 DeepSeek 生成提示...');
+    const messages = [
+      { role: "system", content: "你是康复专家，提供简洁安全提示。" },
+      { role: "user", content: `为"${exerciseName}"提供3条简短安全提示(每条不超过12字，一行一条，无序号):` }
+    ];
     
-    if (hasGemini) {
-      log('🎯 使用 Gemini 生成提示...');
-      const prompt = `为"${exerciseName}"提供3条简短安全提示(每条不超过12字，一行一条，无序号):`;
-      const response = await callGemini(prompt);
-      if (response && response.trim().length > 0) {
-        log('✅ Gemini 提示生成成功');
-        return response.trim();
-      }
+    const response = await callDeepSeek(messages);
+    if (response && response.trim().length > 0) {
+      log('✅ DeepSeek 提示生成成功');
+      return response.trim();
     }
   } catch (err: any) {
-    error('提示生成失败:', err.message);
+    error('提示生成失败，使用备用:', err.message);
   }
 
   log('💾 使用备用提示');
