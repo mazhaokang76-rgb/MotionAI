@@ -4,15 +4,13 @@ import { initializeVision, detectPose, calculateAngle, checkTorsoAlignment } fro
 import { PoseLandmarkerResult } from "@mediapipe/tasks-vision";
 import { SKELETON_CONNECTIONS } from '../constants';
 
-// 扩展 ScreenOrientation 类型
-declare global {
-  interface ScreenOrientation {
-    lock(orientation: 'portrait' | 'landscape' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary'): Promise<void>;
-    unlock(): void;
-    type: string;
-    angle: number;
-  }
-}
+// 扩展 ScreenOrientation 类型（通过类型断言使用）
+type ExtendedScreenOrientation = {
+  lock(orientation: 'portrait' | 'landscape' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary'): Promise<void>;
+  unlock(): void;
+  type: string;
+  angle: number;
+};
 
 // 扩展 HTMLVideoElement 类型
 declare global {
@@ -96,12 +94,13 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   useEffect(() => {
     const lockOrientation = async () => {
       try {
-        if (screen.orientation && screen.orientation.lock) {
+        const orientation = screen.orientation as ExtendedScreenOrientation | undefined;
+        if (orientation && orientation.lock) {
           if (isLandscapeExercise) {
-            await screen.orientation.lock('landscape');
+            await orientation.lock('landscape');
             console.log('🔒 Locked to LANDSCAPE mode');
           } else {
-            await screen.orientation.lock('portrait');
+            await orientation.lock('portrait');
             console.log('🔒 Locked to PORTRAIT mode');
           }
         }
@@ -115,8 +114,9 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
 
     return () => {
       // Unlock orientation when leaving
-      if (screen.orientation && screen.orientation.unlock) {
-        screen.orientation.unlock();
+      const orientation = screen.orientation as ExtendedScreenOrientation | undefined;
+      if (orientation && orientation.unlock) {
+        orientation.unlock();
       }
     };
   }, [isLandscapeExercise]);
