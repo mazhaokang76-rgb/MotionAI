@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { WorkoutSession, ExerciseConfig } from "../types";
 
 // Initialize Gemini Client
@@ -8,7 +8,7 @@ const getAIClient = () => {
     console.warn('⚠️ Gemini API Key not configured properly');
     return null;
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenerativeAI({ apiKey });
 };
 
 export const generateWorkoutReport = async (
@@ -49,12 +49,10 @@ export const generateWorkoutReport = async (
 
     console.log('📤 Sending request to Gemini API...');
 
-    const response = await ai.generateContent({
-      model: 'gemini-2.0-flash-exp',
-      contents: prompt,
-    });
-
-    const text = response.text?.trim() || '';
+    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || '';
     
     console.log('📥 Raw response:', text);
 
@@ -130,11 +128,10 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
 
     console.log('📤 Requesting pre-workout tips...');
 
-    const response = await ai.generateContent({
-      model: 'gemini-2.0-flash-exp',
-      contents: prompt,
-    });
-    const text = response.text?.trim() || '';
+    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || '';
     
     return text || getFallbackPreWorkoutTip(exerciseName);
 
