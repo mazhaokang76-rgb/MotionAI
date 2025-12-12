@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EXERCISES } from '../constants';
 import { ExerciseConfig } from '../types';
-import { generatePreWorkoutTips } from '../services/geminiService';
+import { generatePreWorkoutTips } from '../services/aiService';
 
 interface DashboardProps {
   onStart: (exercise: ExerciseConfig) => void;
