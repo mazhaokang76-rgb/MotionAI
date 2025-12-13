@@ -282,7 +282,7 @@ export const generateWorkoutReport = async (
       const messages = [
         {
           role: "system",
-          content: "你是一位友善的康复治疗师，需要用通俗易懂的语言为患者提供训练建议。避免使用专业术语，用病人能理解的话来解释问题和建议。语言要温和鼓励，富有同理心。"
+          content: "你是一位资深的康复治疗师，需要用专业但易懂的语言为患者提供训练建议。使用康复医学的专业术语，但要适当解释，让患者能够理解。语言要客观准确，专业严谨，同时保持温和鼓励的态度。"
         },
         {
           role: "user",
@@ -313,16 +313,16 @@ ${session.feedbackLog ? session.feedbackLog.map((log, i) => `${i + 1}. ${log}`).
 【专业评估要求】
 作为康复治疗师，请基于这些客观姿态数据提供专业分析：
 
-1. "summary": 用通俗语言总结训练表现，重点关注动作幅度、稳定性和主要问题(25-35字)
-2. "analysis": 温和地解释具体问题，用病人能理解的语言描述错误类型和原因(40-60字)
-3. "tip": 提供具体可操作的改进建议，语言要鼓励和正面(30-45字)
+1. "summary": 专业总结训练表现，重点分析动作质量、错误类型和整体水平(25-35字)
+2. "analysis": 客观分析具体问题，使用康复术语并适当解释，说明错误原因和影响(40-60字)
+3. "tip": 提供专业且实用的改进建议，包含具体的康复训练方法和技术要点(30-45字)
 
-⚠️ 语言要求：
-- 必须使用通俗易懂的语言，避免专业医学术语
-- 语气要温和鼓励，给患者信心
-- 具体描述问题要形象生动，让患者容易理解
-- 建议要实用可操作，包含具体的练习方法
-- 避免使用数字评分，重点描述实际表现
+⚠️ 专业要求：
+- 使用康复医学专业术语（如动作幅度、关节活动度、肌肉控制等）
+- 对专业术语提供简要解释，确保患者理解
+- 客观分析问题原因，避免过度简化
+- 建议要基于康复医学原理，包含具体的训练技术
+- 提供量化的改进目标和进度指标
 
 请用中文回答，返回标准JSON格式，不要包含任何解释文字或markdown标记。`
         }
@@ -479,48 +479,55 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   // 确保纠正次数与实际错误匹配
   const actualCorrections = Math.max(corrections, Math.min(totalErrors, corrections + Math.floor(totalErrors * 0.3)));
   
-  let summary = `完成${exercise.name.split('(')[0].trim()}，`;
+  let summary = `完成${exercise.name.split('(')[0].trim()}训练，`;
+  
+  const errorRate = performanceMetrics.errorRate || 0;
+  const avgAngle = performanceMetrics.avgAngle || 0;
   
   if (avgAngle < 10) {
-    summary += "动作幅度不够，建议增加训练强度。";
-  } else if (totalErrors === 0 && stabilityScore > 80) {
-    summary += "动作规范，表现优秀！";
-  } else if (totalErrors <= 5 && consistencyScore > 70) {
-    summary += "整体表现良好，细节还需注意。";
-  } else if (totalErrors <= 15) {
-    summary += "动作基本正确，还需要多练习。";
+    summary += `关节活动度不足（平均角度${avgAngle}°），动作控制能力需要提升。`;
+  } else if (errorRate <= 10 && stabilityScore > 80) {
+    summary += `动作规范度高，肌肉控制稳定，康复进展良好。`;
+  } else if (errorRate <= 25 && consistencyScore > 60) {
+    summary += `整体动作质量良好，个别技术细节需进一步优化。`;
+  } else if (errorRate <= 50) {
+    summary += `动作基本正确，肌肉协调性和动作精度有待提高。`;
   } else {
-    summary += "动作需要改进，建议降低训练强度。";
+    summary += `动作控制不稳定，需要加强基础动作训练和肌肉激活。`;
   }
   
   let analysis = "";
+  const avgAngle = performanceMetrics.avgAngle || 0;
+  const errorRate = performanceMetrics.errorRate || 0;
   
   if (avgAngle < 10) {
-    analysis = "您的主要问题是动作幅度不够，几乎没有移动。可能是动作范围太小或者需要增加训练强度。";
+    analysis = `关节活动度严重不足（平均角度${avgAngle}°），主要问题为动作幅度控制差，可能存在肌肉激活不足或关节僵硬。`;
   } else if (torsoErrors > Math.max(angleErrors, rangeErrors)) {
-    analysis = `您有${torsoErrors}次身体倾斜的情况，主要问题是姿势不够稳定。建议加强核心肌肉训练。`;
+    analysis = `躯干稳定性问题突出（${torsoErrors}次倾斜），核心肌群控制不足，影响上肢动作的稳定性和准确性。建议加强核心肌群训练。`;
   } else if (angleErrors > rangeErrors) {
-    analysis = `您有${angleErrors}次动作幅度不准确的情况，需要更精确地控制动作范围。`;
+    analysis = `关节活动范围控制不精确（${angleErrors}次角度偏差），动作幅度控制能力需提高，可能存在本体感觉（身体位置觉）不足。`;
   } else if (rangeErrors > 0) {
-    analysis = `您有${rangeErrors}次动作过度的情况，建议在动作范围内更温和地进行训练。`;
+    analysis = `存在过度活动（${rangeErrors}次超范围），关节活动度过大，可能存在关节稳定性不足或肌肉控制不协调。`;
   } else if (stabilityScore < 60) {
-    analysis = "您的动作稳定性需要提高，动作过程中有晃动。建议放慢动作节奏。";
+    analysis = `动作稳定性不足（稳定性${stabilityScore}分），肌肉协调性和动作控制精度需要提升，建议进行专项稳定性训练。`;
   } else {
-    analysis = "您的动作整体规范，继续保持当前训练状态。";
+    analysis = `动作质量整体良好，肌肉控制和关节稳定性表现稳定，继续保持当前训练强度和频率。`;
   }
   
   let tip = "";
+  const avgAngle = performanceMetrics.avgAngle || 0;
+  const errorRate = performanceMetrics.errorRate || 0;
   
   if (avgAngle < 10) {
-    tip = "下次训练时请尽量增加动作幅度，您的目标是让手臂抬得更高一些。可以在镜子前练习，注意动作要更明显。";
+    tip = `建议进行关节活动度训练，可先进行充分热身和关节松动训练。目标：将平均角度提升至60-90°，可使用渐进式训练方法，镜子辅助进行动作范围感知训练。`;
   } else if (torsoErrors > 0 || stabilityScore < 60) {
-    tip = "建议在训练前先做一些核心训练，比如平板支撑。训练时注意保持身体挺直，不要弯腰或倾斜。";
+    tip = `建议加强核心稳定性训练，包括：1)平板支撑类静力性训练 2)躯干抗干扰训练 3)呼吸控制训练。训练时注意保持躯干中立位，避免代偿性动作。`;
   } else if (angleErrors > 0 || consistencyScore < 70) {
-    tip = "下次训练时放慢节奏，仔细感受标准动作的范围。可以对着镜子练习，确保动作幅度达到要求。";
+    tip = `建议进行本体感觉训练和精确控制练习：1)放慢动作节奏，专注感受关节位置 2)使用镜子进行视觉反馈训练 3)进行重复性精准动作练习。`;
   } else if (rangeErrors > 0) {
-    tip = "训练时注意不要过度拉伸，在感觉舒适的范围内进行动作。如果有不适，立即停止。";
+    tip = `建议进行关节稳定性训练和控制范围训练：1)在舒适范围内进行动作 2)加强关节周围肌群力量训练 3)注意疼痛信号，避免过度活动。`;
   } else {
-    tip = "您的表现很好！下次可以适当增加训练时间或次数，保持这个训练强度。";
+    tip = `当前训练效果良好，建议维持训练强度并逐步进阶：可适当增加训练时间、次数或难度，重点关注动作质量的持续提升和肌肉耐力的增强。`;
   }
   
   const report = { summary, analysis, tip };
@@ -538,7 +545,7 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
     const messages = [
       { 
         role: "system", 
-        content: "你是一位友善的康复教练，需要用简单易懂的语言为患者提供训练前的安全提示。每条提示要包含：具体的动作要领、重要的安全提醒、常见的小错误提醒。语言要亲切友好，让患者感到安心。请用中文回答。" 
+        content: "你是一位专业的康复教练，需要用专业但易懂的语言为患者提供训练前的安全提示和动作指导。每条提示要包含：专业的动作技术要点、重要的安全注意事项、常见的动作错误。语言要专业准确，同时让患者容易理解和执行。请用中文回答。" 
       },
       { 
         role: "user", 
@@ -552,9 +559,9 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
 5. 针对该项目常见的错误模式给出预防性提醒
 
 格式示例：
-保持肩部稳定，核心收紧发力
-动作幅度循序渐进，避免代偿
-疼痛即停，勿勉强继续训练` 
+保持肩胛骨稳定，核心肌群激活
+控制动作幅度在舒适范围内
+出现疼痛立即停止训练` 
       }
     ];
     
@@ -573,9 +580,9 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
 
 const getFallbackTips = (exerciseName: string): string => {
   const tips: Record<string, string> = {
-    "双臂外展": "保持肩胛稳定，核心收紧发力\n动作幅度循序渐进，避免代偿\n疼痛即停，勿勉强继续训练",
-    "肘关节屈伸": "避免过度用力，保护关节\n保持呼吸节奏，动作流畅\n疼痛不适立即停止，调整强度",
-    "康复深蹲": "膝盖与脚尖保持同一方向\n下蹲深度量力而行，注意控制\n核心收紧，保持脊柱中立位"
+    "双臂外展": "保持肩胛骨稳定，核心肌群激活\n控制动作幅度在舒适范围内\n出现疼痛立即停止训练",
+    "肘关节屈伸": "控制关节活动度，避免过度负荷\n保持正常呼吸节律，动作流畅\n感到不适立即调整训练强度",
+    "康复深蹲": "膝关节与足尖保持一致方向\n控制下蹲深度，量力而行\n维持核心稳定性，脊柱保持中立"
   };
 
   for (const key in tips) {
@@ -584,5 +591,5 @@ const getFallbackTips = (exerciseName: string): string => {
     }
   }
 
-  return "充分热身准备，注意身体状态\n动作规范标准，避免代偿模式\n训练强度适中，量力而行安全第一";
+  return "充分热身准备，确保关节活动度\n动作执行规范，避免代偿性动作\n训练强度适中，注意安全第一";
 };
