@@ -4,7 +4,6 @@ import { initializeVision, detectPose, calculateAngle, checkTorsoAlignment } fro
 import { PoseLandmarkerResult } from "@mediapipe/tasks-vision";
 import { SKELETON_CONNECTIONS } from '../constants';
 
-// 扩展 ScreenOrientation 类型（通过类型断言使用）
 type ExtendedScreenOrientation = {
   lock(orientation: 'portrait' | 'landscape' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary'): Promise<void>;
   unlock(): void;
@@ -12,7 +11,6 @@ type ExtendedScreenOrientation = {
   angle: number;
 };
 
-// 扩展 HTMLVideoElement 类型
 declare global {
   interface HTMLVideoElement {
     mozHasAudio?: boolean;
@@ -42,14 +40,14 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   const [debugAngle, setDebugAngle] = useState<number>(0);
   const [videoError, setVideoError] = useState(false);
   
-  // Determine if this exercise needs landscape mode
   const isLandscapeExercise = ['SHOULDER_ABDUCTION', 'ELBOW_FLEXION'].includes(exercise.id);
   
   // Feedback Rate Limiting
   const lastSpokenTime = useRef<number>(0);
+  const lastErrorTime = useRef<number>(0); // 用于防抖
   const feedbackLog = useRef<string[]>([]);
   
-  // Enhanced data collection for AI analysis
+  // Enhanced data collection
   const poseAnalyses = useRef<PoseAnalysis[]>([]);
   const errorPatterns = useRef({
     torsoErrors: 0,
@@ -57,11 +55,14 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     rangeErrors: 0,
     totalErrors: 0
   });
+  
+  // 实时统计
+  const frameCount = useRef(0);
+  const errorFrameCount = useRef(0);
 
-  // Speech Synthesis
   const speak = useCallback((text: string) => {
     const now = Date.now();
-    if (now - lastSpokenTime.current < 3000) return; // 3s throttle
+    if (now - lastSpokenTime.current < 3000) return;
     
     lastSpokenTime.current = now;
     feedbackLog.current.push(text);
@@ -72,34 +73,29 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     window.speechSynthesis.speak(utterance);
   }, []);
 
-  // Vibration
   const vibrate = useCallback(() => {
     if (navigator.vibrate) navigator.vibrate(200);
   }, []);
 
-  // Toggle Reference Video
   useEffect(() => {
     if (referenceVideoRef.current) {
         const video = referenceVideoRef.current;
         
         if (status === 'ACTIVE') {
-            // Unmute and play
             video.muted = false;
-            video.volume = 0.6; // Set volume to 60%
+            video.volume = 0.6;
             video.play().catch(e => {
                 console.log("Auto-play prevented, trying muted:", e);
-                // Fallback: play muted if browser blocks audio
                 video.muted = true;
                 video.play();
             });
         } else {
             video.pause();
-            video.currentTime = 0; // Reset to beginning
+            video.currentTime = 0;
         }
     }
   }, [status]);
 
-  // Lock screen orientation
   useEffect(() => {
     const lockOrientation = async () => {
       try {
@@ -115,14 +111,12 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         }
       } catch (error) {
         console.log('⚠️ Screen orientation lock not supported:', error);
-        // Fallback: Add CSS classes to hint layout
       }
     };
 
     lockOrientation();
 
     return () => {
-      // Unlock orientation when leaving
       const orientation = screen.orientation as unknown as ExtendedScreenOrientation | undefined;
       if (orientation && 'unlock' in orientation && orientation.unlock) {
         orientation.unlock();
@@ -139,7 +133,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           try {
-            // Request camera with appropriate constraints based on orientation
             const videoConstraints = isLandscapeExercise ? {
               width: { ideal: 1920 },
               height: { ideal: 1080 },
@@ -205,7 +198,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
       }
       window.speechSynthesis.cancel();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLandscapeExercise]);
 
   useEffect(() => {
@@ -215,60 +207,73 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     } else if (status === 'ACTIVE' && timeLeft === 0) {
       handleFinish();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, timeLeft]);
 
   const handleFinish = () => {
     setStatus('COMPLETED');
     speak("训练完成。非常棒！");
-    // Calculate performance metrics based on real data
+    
     const analyses = poseAnalyses.current;
-    const validAngles = analyses.filter(a => a.angle > 5); // 只考虑有明显角度变化的记录
-    const avgAngle = validAngles.length > 0 ? validAngles.reduce((sum, a) => sum + a.angle, 0) / validAngles.length : 0;
-    const angleVariance = validAngles.length > 1 ? 
-        validAngles.reduce((sum, a) => sum + Math.pow(a.angle - avgAngle, 2), 0) / validAngles.length : 0;
+    const totalFrames = frameCount.current;
+    const errorFrames = errorFrameCount.current;
     
-    // 实际错误次数统计
-    const actualErrors = analyses.filter(a => !a.isCorrect).length;
-    const actualErrorRate = analyses.length > 0 ? (actualErrors / analyses.length) * 100 : 0;
+    console.log('📊 训练统计:', {
+      totalFrames,
+      errorFrames,
+      analyses: analyses.length,
+      corrections: corrections
+    });
     
-    // 基于真实错误率计算动作规范分
-    let finalScore = 100 - actualErrorRate; // 直接基于错误率计算评分
+    // 计算真实错误率
+    const actualErrorRate = totalFrames > 0 ? (errorFrames / totalFrames) * 100 : 0;
+    
+    // 计算最终评分（基于错误率）
+    let finalScore = 100 - actualErrorRate;
     finalScore = Math.max(0, Math.min(100, finalScore));
     
-    // 如果动作幅度很小（平均角度<10度），说明用户基本没动，给低分
+    // 检查动作幅度
+    const validAngles = analyses.filter(a => a.angle > 5);
+    const avgAngle = validAngles.length > 0 
+      ? validAngles.reduce((sum, a) => sum + a.angle, 0) / validAngles.length 
+      : 0;
+    
     if (avgAngle < 10 && validAngles.length < analyses.length * 0.3) {
-        finalScore = Math.max(10, finalScore * 0.2); // 大幅降低评分
-        console.log('⚠️ 检测到动作幅度不足，评分调整:', score, '->', finalScore);
+        finalScore = Math.max(10, finalScore * 0.2);
+        console.log('⚠️ 动作幅度不足，评分调整:', finalScore);
     }
     
-    // 纠正次数应该与实际错误次数匹配或接近
-    const expectedCorrections = Math.max(corrections, Math.floor(actualErrors * 0.8)); // 80%的错误被纠正
-    
-    // Calculate stability score (lower variance = higher stability)
+    // 计算性能指标
+    const angleVariance = validAngles.length > 1 ? 
+        validAngles.reduce((sum, a) => sum + Math.pow(a.angle - avgAngle, 2), 0) / validAngles.length : 0;
     const stabilityScore = Math.max(0, 100 - (angleVariance / 10));
-    const consistencyScore = (analyses.filter(a => a.isCorrect).length / analyses.length) * 100;
+    const consistencyScore = analyses.length > 0 
+      ? (analyses.filter(a => a.isCorrect).length / analyses.length) * 100 
+      : 0;
+
+    console.log('✅ 最终数据:', {
+      finalScore,
+      corrections,
+      errorRate: actualErrorRate,
+      avgAngle,
+      errorPatterns: errorPatterns.current
+    });
 
     onComplete({
       id: Date.now().toString(),
       exerciseId: exercise.id,
       timestamp: Date.now(),
       duration: exercise.durationSec - timeLeft,
-      accuracyScore: finalScore, // 基于真实错误率计算
-      correctionCount: expectedCorrections, // 使用修正后的纠正次数
+      accuracyScore: finalScore,
+      correctionCount: corrections, // 使用实际记录的纠正次数
       feedbackLog: feedbackLog.current,
-      // Enhanced data for AI analysis
       poseAnalyses: analyses,
-      errorPatterns: {
-        ...errorPatterns.current,
-        totalErrors: actualErrors // 确保总错误数准确
-      },
+      errorPatterns: errorPatterns.current,
       performanceMetrics: {
         avgAngle: Math.round(avgAngle),
         angleVariance: Math.round(angleVariance * 100) / 100,
         stabilityScore: Math.round(stabilityScore),
         consistencyScore: Math.round(consistencyScore),
-        errorRate: Math.round(actualErrorRate) // 添加错误率数据
+        errorRate: Math.round(actualErrorRate * 10) / 10
       }
     });
   };
@@ -281,6 +286,11 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     const landmarks = result.landmarks[0];
     const currentTime = Date.now();
     
+    // 只在训练状态下计数
+    if (status === 'ACTIVE') {
+      frameCount.current++;
+    }
+    
     // Check Torso
     const { aligned, error: torsoError } = checkTorsoAlignment(landmarks);
     let isError = false;
@@ -292,7 +302,9 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         isError = true;
         errorType = 'torso';
         localFeedback = "收紧核心，身体歪了！";
-        errorPatterns.current.torsoErrors++;
+        if (status === 'ACTIVE') {
+          errorPatterns.current.torsoErrors++;
+        }
     } else {
         // Specific Exercise Logic
         if (exercise.id === 'SHOULDER_ABDUCTION') {
@@ -300,7 +312,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
             const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
             const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
 
-            // Calculate angle
             currentAngle = calculateAngle(leftHip, leftShoulder, leftElbow);
             setDebugAngle(Math.round(currentAngle));
 
@@ -308,12 +319,16 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                 isError = true;
                 errorType = 'angle';
                 localFeedback = "手臂抬高一点！";
-                errorPatterns.current.angleErrors++;
+                if (status === 'ACTIVE') {
+                  errorPatterns.current.angleErrors++;
+                }
             } else if (currentAngle > 115) {
                 isError = true;
                 errorType = 'angle';
                 localFeedback = "太高了，放低一点！";
-                errorPatterns.current.angleErrors++;
+                if (status === 'ACTIVE') {
+                  errorPatterns.current.angleErrors++;
+                }
             }
         } else if (exercise.id === 'ELBOW_FLEXION') {
             const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
@@ -327,17 +342,21 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                 isError = true;
                 errorType = 'range';
                 localFeedback = "手臂完全伸直！准备弯曲";
-                errorPatterns.current.rangeErrors++;
+                if (status === 'ACTIVE') {
+                  errorPatterns.current.rangeErrors++;
+                }
             } else if (currentAngle < 40) {
                 isError = true;
                 errorType = 'range';
                 localFeedback = "弯曲角度太小！";
-                errorPatterns.current.rangeErrors++;
+                if (status === 'ACTIVE') {
+                  errorPatterns.current.rangeErrors++;
+                }
             }
         }
     }
 
-    // Record detailed pose analysis for AI
+    // Record pose analysis
     if (status === 'ACTIVE') {
         poseAnalyses.current.push({
             angle: currentAngle,
@@ -346,40 +365,45 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
             feedback: localFeedback
         });
         
-        // Update error patterns
         if (isError) {
+            errorFrameCount.current++;
             errorPatterns.current.totalErrors++;
         }
     }
 
-    // Apply Feedback
+    // Apply Feedback with debouncing
     if (isError) {
         setFeedback(localFeedback);
+        
         if (status === 'ACTIVE') {
-            // 记录实际纠正
-            speak(localFeedback);
-            vibrate();
-            setCorrections(c => c + 1);
-            setScore(s => Math.max(0, s - 2)); // 每次错误扣2分，更明显的惩罚
+            const timeSinceLastError = currentTime - lastErrorTime.current;
+            
+            // 只在距离上次错误超过1.5秒时才算新的纠正
+            if (timeSinceLastError > 1500) {
+                speak(localFeedback);
+                vibrate();
+                setCorrections(c => c + 1);
+                lastErrorTime.current = currentTime;
+            }
+            
+            // 实时更新评分
+            setScore(s => Math.max(0, s - 0.5));
         }
     } else {
         setFeedback("姿势标准 ✅");
-        // 正确时轻微加分，鼓励良好表现
         if (status === 'ACTIVE') {
-            setScore(s => Math.min(100, s + 0.1));
+            setScore(s => Math.min(100, s + 0.05));
         }
     }
 
     return { isError, feedbackMsg: localFeedback };
   };
 
-  // Custom Drawing Function to guarantee "Stickman" look
   const drawSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[], width: number, height: number, isError: boolean) => {
       ctx.lineWidth = 6;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       
-      // 1. Draw Connections (Lines)
       // @ts-ignore
       SKELETON_CONNECTIONS.forEach((conn) => {
           const start = landmarks[conn.start];
@@ -393,7 +417,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
           }
       });
 
-      // 2. Draw Landmarks (Joints)
       landmarks.forEach((lm) => {
           if (lm.visibility > 0.5) {
             const x = lm.x * width;
@@ -421,28 +444,23 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
 
     if (!ctx || video.readyState < 2) return;
 
-    // 1. Match Canvas Size to Video Size
     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
     }
 
-    // 2. Clear
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 3. Detect & Draw
     const results = detectPose(video, t);
 
     if (results && results.landmarks.length > 0) {
         const landmarks = results.landmarks[0];
         const { isError } = processLandmarks(results);
         
-        // Draw the "Stickman"
         drawSkeleton(ctx, landmarks, canvas.width, canvas.height, isError);
     }
   };
 
-  // Container classes based on orientation
   const containerClass = isLandscapeExercise 
     ? "fixed inset-0 bg-slate-950 z-50 flex flex-row" 
     : "fixed inset-0 bg-slate-950 z-50 flex flex-col";
@@ -455,15 +473,13 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     ? "flex-1 relative bg-gray-900 overflow-hidden flex items-center justify-center"
     : "flex-1 relative bg-gray-900 overflow-hidden flex items-center justify-center";
   
-  // Video styles for proper fitting
   const videoFitClass = isLandscapeExercise
-    ? "w-full h-full object-contain" // Landscape: contain to show full video
-    : "w-full h-full object-cover";   // Portrait: cover to fill space
+    ? "w-full h-full object-contain"
+    : "w-full h-full object-cover";
 
   return (
     <div className={containerClass}>
       
-      {/* Reference Video Area */}
       <div className={referenceVideoContainerClass}>
          {!videoError ? (
            <>
@@ -479,22 +495,12 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                   console.error('Video failed to load:', exercise.standardVideoUrl);
                   setVideoError(true);
                 }}
-                onLoadedMetadata={(e) => {
-                  const video = e.currentTarget;
-                  console.log('📹 Video loaded:', {
-                    duration: video.duration,
-                    dimensions: `${video.videoWidth}x${video.videoHeight}`,
-                    hasAudio: video.mozHasAudio || (video as any).webkitAudioDecodedByteCount > 0
-                  });
-                }}
              />
-             {/* Audio/Mute Control */}
              <button
                onClick={() => {
                  if (referenceVideoRef.current) {
                    const video = referenceVideoRef.current;
                    video.muted = !video.muted;
-                   // Force re-render
                    setVideoError(prev => prev);
                  }
                }}
@@ -516,11 +522,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
              <div className="text-center p-6">
                <div className="text-6xl mb-4">🎬</div>
                <p className="text-slate-400 text-sm">示范视频加载失败</p>
-               <p className="text-slate-500 text-xs mt-2">请参考文字说明进行训练</p>
-               <div className="mt-4 text-left bg-slate-700/50 p-4 rounded-lg max-w-sm">
-                 <p className="text-white text-sm font-semibold mb-2">{exercise.name}</p>
-                 <p className="text-slate-300 text-xs">{exercise.description}</p>
-               </div>
              </div>
            </div>
          )}
@@ -535,14 +536,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                 <span>评分: {Math.round(score)}</span>
             </div>
          </div>
-         {isLandscapeExercise && (
-           <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-500/80 px-3 py-1 rounded-full text-white text-xs font-bold z-10">
-             横屏模式 🔄
-           </div>
-         )}
       </div>
 
-      {/* User Camera & AI Overlay Area */}
       <div className={cameraContainerClass}>
         {isLoading && !cameraError && (
             <div className="absolute z-20 text-blue-400 text-lg font-semibold flex flex-col items-center animate-pulse">
@@ -560,7 +555,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
              </div>
         )}
 
-        {/* Video Layer */}
         <video 
             ref={videoRef} 
             className="absolute w-full h-full object-contain transform scale-x-[-1]" 
@@ -569,16 +563,13 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
             autoPlay
         />
         
-        {/* Canvas Layer */}
         <canvas 
             ref={canvasRef} 
             className="absolute w-full h-full object-contain transform scale-x-[-1] z-10" 
         />
         
-        {/* Real-time Feedback Overlay */}
         {!isLoading && !cameraError && (
             <>
-                {/* Top Feedback Banner */}
                 <div className="absolute top-4 left-0 right-0 flex justify-center z-20 pointer-events-none">
                     <div className={`px-6 py-2 rounded-full backdrop-blur-md border shadow-xl transition-all duration-300 ${
                         feedback.includes("标准") 
@@ -594,16 +585,15 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                     </div>
                 </div>
 
-                {/* Bottom Debug Info */}
                 <div className="absolute bottom-4 left-4 bg-black/50 px-3 py-2 rounded-lg text-xs text-gray-300 z-10 backdrop-blur flex flex-col gap-1">
                     <p>关键点: {debugAngle}°</p>
-                    <p className="text-gray-500">状态: {status}</p>
+                    <p>纠正: {corrections}次</p>
+                    <p className="text-gray-500">帧数: {frameCount.current}</p>
                 </div>
             </>
         )}
       </div>
 
-      {/* Controls */}
       <div className="absolute bottom-0 left-0 right-0 bg-slate-900 p-4 border-t border-slate-800 flex justify-between items-center z-50 safe-area-bottom">
         <button 
             onClick={onCancel}
@@ -614,7 +604,20 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         
         {status === 'IDLE' && !isLoading && !cameraError && (
              <button 
-             onClick={() => { setStatus('ACTIVE'); speak("开始跟练"); }}
+             onClick={() => { 
+               setStatus('ACTIVE'); 
+               speak("开始跟练");
+               // 重置计数器
+               frameCount.current = 0;
+               errorFrameCount.current = 0;
+               poseAnalyses.current = [];
+               errorPatterns.current = {
+                 torsoErrors: 0,
+                 angleErrors: 0,
+                 rangeErrors: 0,
+                 totalErrors: 0
+               };
+             }}
              className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-full font-bold text-lg shadow-lg shadow-blue-500/30 transition-all active:scale-95 flex-1 mx-4"
          >
              开始跟练
