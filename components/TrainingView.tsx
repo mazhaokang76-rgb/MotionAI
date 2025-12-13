@@ -209,20 +209,121 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, timeLeft]);
 
-  const handleFinish = () => {
+const handleFinish = () => {
     setStatus('COMPLETED');
     speak("训练完成。非常棒！");
-    onComplete({
+    
+    // ============ 详细日志：记录实时数据 ============
+    console.log('');
+    console.log('='.repeat(80));
+    console.log('🏁 TRAINING COMPLETED - DATA COLLECTION');
+    console.log('='.repeat(80));
+    console.log('');
+    console.log('📊 REAL-TIME COUNTERS (实时计数器):');
+    console.log('  ├─ Current Score (当前评分):', score);
+    console.log('  ├─ Correction Count (纠正次数):', corrections);
+    console.log('  ├─ Time Remaining (剩余时间):', timeLeft, 'seconds');
+    console.log('  └─ Training Duration (实际时长):', exercise.durationSec - timeLeft, 'seconds');
+    console.log('');
+    
+    // ============ 收集姿态分析数据 ============
+    const analyses = poseAnalyses.current;
+    console.log('📈 POSE ANALYSIS DATA (姿态分析数据):');
+    console.log('  ├─ Total Records (总记录数):', analyses.length);
+    console.log('  ├─ Correct Poses (正确姿势):', analyses.filter(a => a.isCorrect).length);
+    console.log('  ├─ Incorrect Poses (错误姿势):', analyses.filter(a => !a.isCorrect).length);
+    console.log('  └─ Error Patterns (错误模式):', errorPatterns.current);
+    console.log('');
+    
+    console.log('💬 FEEDBACK LOG (反馈日志):');
+    console.log('  ├─ Total Entries (总条数):', feedbackLog.current.length);
+    console.log('  └─ Sample (示例):', feedbackLog.current.slice(-3));
+    console.log('');
+    
+    // ============ 计算基础指标 ============
+    const validAngles = analyses.filter(a => a.angle > 5);
+    const avgAngle = validAngles.length > 0 
+      ? validAngles.reduce((sum, a) => sum + a.angle, 0) / validAngles.length 
+      : 0;
+    
+    console.log('🎯 ANGLE METRICS (角度指标):');
+    console.log('  ├─ Average Angle (平均角度):', avgAngle.toFixed(1), '°');
+    console.log('  ├─ Valid Angle Count (有效角度数):', validAngles.length);
+    console.log('  └─ Total Angle Count (总角度数):', analyses.length);
+    console.log('');
+    
+    // ============ 🔧 关键修复：直接使用实时数据 ============
+    let finalScore = Math.round(score); // ✅ 直接使用实时评分
+    let finalCorrections = corrections;  // ✅ 直接使用实时纠正次数
+    
+    console.log('✅ USING REAL-TIME DATA (使用实时数据):');
+    console.log('  ├─ Final Score (最终评分):', finalScore, '(from real-time score)');
+    console.log('  └─ Final Corrections (最终纠正):', finalCorrections, '(from real-time counter)');
+    console.log('');
+    
+    // 只在动作幅度明显不足时调整评分
+    if (avgAngle < 10 && validAngles.length < analyses.length * 0.3) {
+        const oldScore = finalScore;
+        finalScore = Math.max(20, Math.round(finalScore * 0.5));
+        console.log('⚠️  LOW MOTION ADJUSTMENT (低幅度调整):');
+        console.log('  └─ Score adjusted:', oldScore, '→', finalScore);
+        console.log('');
+    }
+    
+    // ============ 计算性能指标 ============
+    const angleVariance = validAngles.length > 1 ? 
+        validAngles.reduce((sum, a) => sum + Math.pow(a.angle - avgAngle, 2), 0) / validAngles.length : 0;
+    const stabilityScore = Math.max(0, 100 - (angleVariance / 10));
+    const consistencyScore = analyses.length > 0 
+      ? (analyses.filter(a => a.isCorrect).length / analyses.length) * 100 
+      : 0;
+    const errorRate = analyses.length > 0
+      ? ((analyses.filter(a => !a.isCorrect).length / analyses.length) * 100)
+      : 0;
+    
+    console.log('📊 PERFORMANCE METRICS (性能指标):');
+    console.log('  ├─ Angle Variance (角度方差):', angleVariance.toFixed(2));
+    console.log('  ├─ Stability Score (稳定性):', Math.round(stabilityScore));
+    console.log('  ├─ Consistency Score (一致性):', Math.round(consistencyScore));
+    console.log('  └─ Error Rate (错误率):', errorRate.toFixed(1), '%');
+    console.log('');
+
+    // ============ 构建会话数据 ============
+    const sessionData = {
       id: Date.now().toString(),
       exerciseId: exercise.id,
       timestamp: Date.now(),
       duration: exercise.durationSec - timeLeft,
-      accuracyScore: score,
-      correctionCount: corrections,
-      feedbackLog: feedbackLog.current
-    });
-  };
+      accuracyScore: finalScore,        // ✅ 使用实时评分
+      correctionCount: finalCorrections, // ✅ 使用实时纠正次数
+      feedbackLog: feedbackLog.current,
+      poseAnalyses: analyses,
+      errorPatterns: errorPatterns.current,
+      performanceMetrics: {
+        avgAngle: Math.round(avgAngle),
+        angleVariance: Math.round(angleVariance * 100) / 100,
+        stabilityScore: Math.round(stabilityScore),
+        consistencyScore: Math.round(consistencyScore),
+        errorRate: Math.round(errorRate * 10) / 10
+      }
+    };
+    
+    console.log('📦 SESSION DATA PACKAGE (会话数据包):');
+    console.log('  ├─ Exercise ID:', sessionData.exerciseId);
+    console.log('  ├─ Duration:', sessionData.duration, 'seconds');
+    console.log('  ├─ Accuracy Score:', sessionData.accuracyScore, '← 🔴 CRITICAL');
+    console.log('  ├─ Correction Count:', sessionData.correctionCount, '← 🔴 CRITICAL');
+    console.log('  ├─ Feedback Log:', sessionData.feedbackLog.length, 'entries');
+    console.log('  ├─ Pose Analyses:', sessionData.poseAnalyses.length, 'records');
+    console.log('  └─ Error Patterns:', JSON.stringify(sessionData.errorPatterns));
+    console.log('');
+    
+    console.log('🚀 CALLING onComplete() with session data...');
+    console.log('='.repeat(80));
+    console.log('');
 
+    onComplete(sessionData);
+};
   const processLandmarks = (result: PoseLandmarkerResult) => {
     if (!result.landmarks || result.landmarks.length === 0) {
         return { isError: false, feedbackMsg: "未检测到人体" };
@@ -320,7 +421,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
             ctx.arc(x, y, 6, 0, 2 * Math.PI);
             ctx.fillStyle = isError ? "#ef4444" : "#ffffff";
             ctx.fill();
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
             ctx.strokeStyle = "rgba(0,0,0,0.5)";
             ctx.stroke();
           }
