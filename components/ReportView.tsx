@@ -13,12 +13,105 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
+ useEffect(() => {
+    console.log('');
+    console.log('='.repeat(80));
+    console.log('📥 [ReportView] DATA RECEPTION CHECK');
+    console.log('='.repeat(80));
+    console.log('');
+    console.log('🔍 RECEIVED SESSION DATA:');
+    console.log('  ├─ Exercise Name:', exercise.name);
+    console.log('  ├─ Exercise ID:', session.exerciseId);
+    console.log('  ├─ Duration:', session.duration, 'seconds');
+    console.log('  ├─ Accuracy Score:', session.accuracyScore, '← 🔴 CHECK THIS');
+    console.log('  ├─ Correction Count:', session.correctionCount, '← 🔴 CHECK THIS');
+    console.log('  ├─ Feedback Log:', session.feedbackLog?.length || 0, 'entries');
+    console.log('  ├─ Pose Analyses:', session.poseAnalyses?.length || 0, 'records');
+    console.log('  └─ Error Patterns:', session.errorPatterns);
+    console.log('');
+    
+    // 🔴 关键验证：检查数据是否正确
+    if (session.accuracyScore === 100 && session.correctionCount === 0) {
+        console.warn('⚠️  WARNING: Perfect score detected!');
+        console.warn('   This might be correct, or data might not be transmitted properly.');
+        console.warn('   Check TrainingView logs to verify real-time counters.');
+    } else {
+        console.log('✅ Data looks valid (non-perfect score detected)');
+    }
+    console.log('');
+    
     const fetchReport = async () => {
-        console.log('='.repeat(60));
-        console.log('🏁 [ReportView] 开始生成报告');
-        console.log('='.repeat(60));
+        console.log('📤 [ReportView] Preparing to call AI Service...');
+        console.log('   Sending to generateWorkoutReport():');
+        console.log('   - session.accuracyScore:', session.accuracyScore);
+        console.log('   - session.correctionCount:', session.correctionCount);
+        console.log('   - exercise.name:', exercise.name);
+        console.log('');
         
+        setIsLoading(true);
+        setLoadError(false);
+        
+        try {
+            console.log('📡 [ReportView] Calling generateWorkoutReport...');
+            const jsonStr = await generateWorkoutReport(session, exercise);
+            
+            console.log('📥 [ReportView] Received response from AI Service');
+            console.log('   Response type:', typeof jsonStr);
+            console.log('   Response length:', jsonStr?.length || 0);
+            console.log('   Response preview:', jsonStr?.substring(0, 100));
+            console.log('');
+            
+            if (!jsonStr || jsonStr.trim() === '') {
+                throw new Error('AI Service returned empty response');
+            }
+            
+            const parsed = JSON.parse(jsonStr);
+            console.log('✅ [ReportView] JSON parsed successfully:');
+            console.log('   - summary:', parsed.summary);
+            console.log('   - analysis:', parsed.analysis);
+            console.log('   - tip:', parsed.tip);
+            console.log('');
+            
+            if (!parsed.summary || !parsed.analysis || !parsed.tip) {
+                console.warn('⚠️  [ReportView] Incomplete report data');
+                setAiReport({
+                    summary: parsed.summary || "训练完成",
+                    analysis: parsed.analysis || "数据处理中",
+                    tip: parsed.tip || "继续训练"
+                });
+                setLoadError(true);
+            } else {
+                console.log('✅ [ReportView] Complete report received');
+                setAiReport(parsed);
+                setLoadError(false);
+            }
+            
+        } catch (error: any) {
+            console.error('❌ [ReportView] Report generation failed:');
+            console.error('   Error:', error.message);
+            console.error('   Stack:', error.stack);
+            console.error('');
+            
+            setLoadError(true);
+            
+            const fallbackReport = {
+                summary: `完成训练，评分 ${Math.round(session.accuracyScore)} 分`,
+                analysis: session.correctionCount > 5 
+                    ? "有一些姿势问题，建议放慢速度。" 
+                    : "整体表现良好，继续保持。",
+                tip: "训练前充分热身，注意核心收紧。"
+            };
+            
+            console.log('💾 [ReportView] Using fallback report:', fallbackReport);
+            setAiReport(fallbackReport);
+        } finally {
+            setIsLoading(false);
+            console.log('🏁 [ReportView] Report fetch process completed');
+            console.log('='.repeat(80));
+            console.log('');
+        }
+    };
+     
         // 详细打印接收到的数据
         console.log('📊 [ReportView] 接收到的 session 数据:');
         console.log('  - exerciseId:', session.exerciseId);
