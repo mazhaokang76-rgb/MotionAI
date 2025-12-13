@@ -256,6 +256,18 @@ export const generateWorkoutReport = async (
       console.log('📤 正在构建请求到 gro-complete 端点...');
       console.log('');
       
+      // 解析和增强训练数据
+      const detailedFeedback = session.feedbackLog || [];
+      const errorCount = detailedFeedback.filter(msg => 
+        msg.includes('歪了') || msg.includes('抬高') || msg.includes('太低') || 
+        msg.includes('完全伸直') || msg.includes('弯曲角度') || msg.includes('纠正')
+      ).length;
+      
+      console.log('🔍 详细数据分析:');
+      console.log('  错误类型统计:', errorCount, '次');
+      console.log('  反馈记录详细:', detailedFeedback);
+      console.log('');
+      
       const messages = [
         {
           role: "system",
@@ -263,24 +275,39 @@ export const generateWorkoutReport = async (
         },
         {
           role: "user",
-          content: `请分析以下康复训练数据并返回专业评估：
+          content: `请基于以下康复训练数据进行分析，注意这是基于视频姿态捕捉的客观数据：
 
 【训练项目信息】
 项目名称: ${exerciseConfig.name}
 项目说明: ${exerciseConfig.description}
 
-【训练表现数据】
+【客观姿态数据】
 - 训练时长: ${session.duration}秒
-- 动作评分: ${session.accuracyScore.toFixed(1)}分 (满分100分)
-- 姿势纠正次数: ${session.correctionCount}次
-- 反馈记录: ${session.feedbackLog?.length || 0}条
+- 实时准确度评分: ${session.accuracyScore.toFixed(1)}分 (基于姿态捕捉算法)
+- 姿势纠正触发次数: ${session.correctionCount}次
+- 实时反馈记录数: ${session.feedbackLog?.length || 0}条
 
-【评估要求】
-请从康复治疗师的专业角度，提供以下三个维度的评估：
+【具体姿态错误记录】(基于视频捕捉):
+${session.feedbackLog ? session.feedbackLog.map((log, i) => `${i + 1}. ${log}`).join('\n') : '无记录'}
 
-1. "summary": 综合评价本次训练表现(25-35字)
-2. "analysis": 基于数据的专业分析，包括动作质量、训练强度、常见问题等(40-60字)  
-3. "tip": 具体的改进建议和下步训练要点(30-45字)
+【错误类型统计】:
+- 姿态对齐错误: ${(session.feedbackLog || []).filter(msg => msg.includes('歪了') || msg.includes('核心')).length}次
+- 角度偏差错误: ${(session.feedbackLog || []).filter(msg => msg.includes('抬高') || msg.includes('太低') || msg.includes('角度')).length}次  
+- 动作幅度错误: ${(session.feedbackLog || []).filter(msg => msg.includes('伸直') || msg.includes('弯曲')).length}次
+- 其他纠正: ${(session.feedbackLog || []).filter(msg => msg.includes('纠正')).length}次
+
+【专业评估要求】
+作为康复治疗师，请基于这些客观姿态数据提供专业分析：
+
+1. "summary": 综合评估，重点分析姿态控制能力和动作一致性(25-35字)
+2. "analysis": 基于具体错误记录的专业分析：包括错误类型分布、动作稳定性、肌肉控制质量等(40-60字)
+3. "tip": 针对发现的错误模式的专项训练建议(30-45字)
+
+⚠️ 客观分析要求：
+- 必须统计和分析具体错误类型，不要简单看总分
+- 重点分析动作的一致性和稳定性问题
+- 基于错误频率提供量化的改进建议
+- 建议要具体到动作要领和训练方法
 
 请用中文回答，返回标准JSON格式，不要包含任何解释文字或markdown标记。`
         }
@@ -395,32 +422,48 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   
   const score = Math.round(session.accuracyScore);
   const corrections = session.correctionCount;
+  const feedbackLog = session.feedbackLog || [];
+  
+  // 基于实际反馈记录分析错误类型
+  const torsoErrors = feedbackLog.filter(msg => msg.includes('歪了') || msg.includes('核心')).length;
+  const angleErrors = feedbackLog.filter(msg => msg.includes('抬高') || msg.includes('太低') || msg.includes('角度')).length;
+  const rangeErrors = feedbackLog.filter(msg => msg.includes('伸直') || msg.includes('弯曲')).length;
+  
+  log('🔍 错误类型分析:', { torsoErrors, angleErrors, rangeErrors, corrections });
   
   let summary = `完成${exercise.name.split('(')[0].trim()}，`;
-  if (score >= 90) summary += "表现优秀！";
-  else if (score >= 75) summary += "表现良好！";
-  else summary += "继续加油！";
+  if (torsoErrors === 0 && angleErrors === 0 && rangeErrors === 0) {
+    summary += "姿态控制优秀，动作规范！";
+  } else if (corrections <= 3) {
+    summary += "整体表现良好，细节有待提升。";
+  } else {
+    summary += "动作需要改进，注意控制质量。";
+  }
   
   let analysis = "";
-  if (corrections > 8) {
-    analysis = "动作偏差较多，建议降低速度，注重每个细节。";
-  } else if (corrections > 3) {
-    analysis = "有一些姿势问题，注意保持核心稳定。";
+  if (torsoErrors > angleErrors && torsoErrors > rangeErrors) {
+    analysis = "主要问题是身体姿态不正，核心稳定性需要加强训练。";
+  } else if (angleErrors > rangeErrors) {
+    analysis = "动作幅度控制有问题，需要精确掌握标准角度范围。";
+  } else if (rangeErrors > 0) {
+    analysis = "关节活动度不足，建议增加热身和拉伸训练。";
   } else {
-    analysis = "动作规范度高，保持当前训练强度。";
+    analysis = "动作规范度较高，继续保持当前训练强度。";
   }
   
   let tip = "";
-  if (score < 70) {
-    tip = "反复观看示范视频，理解正确姿势后再练习。";
-  } else if (score < 85) {
-    tip = "训练前充分热身，保持呼吸节奏。";
+  if (torsoErrors > 0) {
+    tip = "加强核心稳定性训练，动作前先收紧腹部肌肉。";
+  } else if (angleErrors > 0) {
+    tip = "放慢动作节奏，精确感受标准动作幅度范围。";
+  } else if (rangeErrors > 0) {
+    tip = "增加关节活动度训练，充分热身后再开始正式训练。";
   } else {
-    tip = "继续保持，可适当增加训练强度。";
+    tip = "保持当前训练水平，可适当增加训练强度和频率。";
   }
   
   const report = { summary, analysis, tip };
-  log('✅ 备用报告生成:', report);
+  log('✅ 基于数据的备用报告生成:', report);
   
   return report;
 };
@@ -445,11 +488,12 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
 2. 包含具体的动作要领和安全提醒
 3. 一行一条，无序号
 4. 实用性要强，适合患者操作
+5. 针对该项目常见的错误模式给出预防性提醒
 
 格式示例：
 保持肩部稳定，核心收紧发力
-动作幅度循序渐进，避免过度拉伸
-感到不适立即停止，量力而行` 
+动作幅度循序渐进，避免代偿
+疼痛即停，勿勉强继续训练` 
       }
     ];
     
