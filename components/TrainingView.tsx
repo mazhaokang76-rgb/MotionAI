@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ExerciseConfig, POSE_LANDMARKS, WorkoutSession } from '../types';
+import { ExerciseConfig, POSE_LANDMARKS, WorkoutSession, PoseAnalysis } from '../types';
 import { initializeVision, detectPose, calculateAngle, checkTorsoAlignment } from '../services/visionService';
 import { PoseLandmarkerResult } from "@mediapipe/tasks-vision";
 import { SKELETON_CONNECTIONS } from '../constants';
@@ -48,6 +48,15 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   // Feedback Rate Limiting
   const lastSpokenTime = useRef<number>(0);
   const feedbackLog = useRef<string[]>([]);
+  
+  // Enhanced data collection for AI analysis
+  const poseAnalyses = useRef<PoseAnalysis[]>([]);
+  const errorPatterns = useRef({
+    torsoErrors: 0,
+    angleErrors: 0,
+    rangeErrors: 0,
+    totalErrors: 0
+  });
 
   // Speech Synthesis
   const speak = useCallback((text: string) => {
@@ -212,6 +221,17 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   const handleFinish = () => {
     setStatus('COMPLETED');
     speak("训练完成。非常棒！");
+    // Calculate performance metrics
+    const analyses = poseAnalyses.current;
+    const validAngles = analyses.filter(a => a.angle > 0);
+    const avgAngle = validAngles.length > 0 ? validAngles.reduce((sum, a) => sum + a.angle, 0) / validAngles.length : 0;
+    const angleVariance = validAngles.length > 1 ? 
+        validAngles.reduce((sum, a) => sum + Math.pow(a.angle - avgAngle, 2), 0) / validAngles.length : 0;
+    
+    // Calculate stability score (lower variance = higher stability)
+    const stabilityScore = Math.max(0, 100 - (angleVariance / 10));
+    const consistencyScore = (analyses.filter(a => a.isCorrect).length / analyses.length) * 100;
+
     onComplete({
       id: Date.now().toString(),
       exerciseId: exercise.id,
@@ -219,7 +239,16 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
       duration: exercise.durationSec - timeLeft,
       accuracyScore: score,
       correctionCount: corrections,
-      feedbackLog: feedbackLog.current
+      feedbackLog: feedbackLog.current,
+      // Enhanced data for AI analysis
+      poseAnalyses: analyses,
+      errorPatterns: errorPatterns.current,
+      performanceMetrics: {
+        avgAngle: Math.round(avgAngle),
+        angleVariance: Math.round(angleVariance * 100) / 100,
+        stabilityScore: Math.round(stabilityScore),
+        consistencyScore: Math.round(consistencyScore)
+      }
     });
   };
 
@@ -229,15 +258,20 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     }
 
     const landmarks = result.landmarks[0];
+    const currentTime = Date.now();
     
     // Check Torso
     const { aligned, error: torsoError } = checkTorsoAlignment(landmarks);
     let isError = false;
     let localFeedback = "姿势标准";
+    let currentAngle = 0;
+    let errorType = 'none';
 
     if (!aligned && torsoError > 0.15) {
         isError = true;
+        errorType = 'torso';
         localFeedback = "收紧核心，身体歪了！";
+        errorPatterns.current.torsoErrors++;
     } else {
         // Specific Exercise Logic
         if (exercise.id === 'SHOULDER_ABDUCTION') {
@@ -246,31 +280,54 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
             const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
 
             // Calculate angle
-            const angle = calculateAngle(leftHip, leftShoulder, leftElbow);
-            setDebugAngle(Math.round(angle));
+            currentAngle = calculateAngle(leftHip, leftShoulder, leftElbow);
+            setDebugAngle(Math.round(currentAngle));
 
-            if (angle < 70) {
+            if (currentAngle < 70) {
                 isError = true;
+                errorType = 'angle';
                 localFeedback = "手臂抬高一点！";
-            } else if (angle > 115) {
+                errorPatterns.current.angleErrors++;
+            } else if (currentAngle > 115) {
                 isError = true;
+                errorType = 'angle';
                 localFeedback = "太高了，放低一点！";
+                errorPatterns.current.angleErrors++;
             }
         } else if (exercise.id === 'ELBOW_FLEXION') {
             const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
             const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
             const leftWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
 
-            const angle = calculateAngle(leftShoulder, leftElbow, leftWrist);
-            setDebugAngle(Math.round(angle));
+            currentAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
+            setDebugAngle(Math.round(currentAngle));
 
-            if (angle > 170) {
+            if (currentAngle > 170) {
                 isError = true;
+                errorType = 'range';
                 localFeedback = "手臂完全伸直！准备弯曲";
-            } else if (angle < 40) {
+                errorPatterns.current.rangeErrors++;
+            } else if (currentAngle < 40) {
                 isError = true;
+                errorType = 'range';
                 localFeedback = "弯曲角度太小！";
+                errorPatterns.current.rangeErrors++;
             }
+        }
+    }
+
+    // Record detailed pose analysis for AI
+    if (status === 'ACTIVE') {
+        poseAnalyses.current.push({
+            angle: currentAngle,
+            timestamp: currentTime,
+            isCorrect: !isError,
+            feedback: localFeedback
+        });
+        
+        // Update error patterns
+        if (isError) {
+            errorPatterns.current.totalErrors++;
         }
     }
 
