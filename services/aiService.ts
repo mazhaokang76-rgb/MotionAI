@@ -577,4 +577,4 @@ const getFallbackTips = (exerciseName: string): string => {
   }
 
   return "充分热身准备，确保关节活动度\n动作执行规范，避免代偿性动作\n训练强度适中，注意安全第一";
-};)
+};
