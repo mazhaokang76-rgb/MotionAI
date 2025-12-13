@@ -223,10 +223,17 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     speak("训练完成。非常棒！");
     // Calculate performance metrics
     const analyses = poseAnalyses.current;
-    const validAngles = analyses.filter(a => a.angle > 0);
+    const validAngles = analyses.filter(a => a.angle > 5); // 只考虑有明显角度变化的记录
     const avgAngle = validAngles.length > 0 ? validAngles.reduce((sum, a) => sum + a.angle, 0) / validAngles.length : 0;
     const angleVariance = validAngles.length > 1 ? 
         validAngles.reduce((sum, a) => sum + Math.pow(a.angle - avgAngle, 2), 0) / validAngles.length : 0;
+    
+    // 如果平均角度很小，说明用户基本没动，大幅降低评分
+    let finalScore = score;
+    if (avgAngle < 10 && validAngles.length < analyses.length * 0.3) {
+        finalScore = Math.max(20, score * 0.3); // 大幅降低评分
+        console.log('⚠️ 检测到动作幅度不足，评分调整:', score, '->', finalScore);
+    }
     
     // Calculate stability score (lower variance = higher stability)
     const stabilityScore = Math.max(0, 100 - (angleVariance / 10));
@@ -237,7 +244,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
       exerciseId: exercise.id,
       timestamp: Date.now(),
       duration: exercise.durationSec - timeLeft,
-      accuracyScore: score,
+      accuracyScore: finalScore, // 使用修正后的评分
       correctionCount: corrections,
       feedbackLog: feedbackLog.current,
       // Enhanced data for AI analysis
@@ -335,13 +342,18 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     if (isError) {
         setFeedback(localFeedback);
         if (status === 'ACTIVE') {
+            // 记录实际纠正
             speak(localFeedback);
             vibrate();
             setCorrections(c => c + 1);
-            setScore(s => Math.max(0, s - 0.5));
+            setScore(s => Math.max(0, s - 2)); // 每次错误扣2分，更明显的惩罚
         }
     } else {
         setFeedback("姿势标准 ✅");
+        // 正确时轻微加分，鼓励良好表现
+        if (status === 'ACTIVE') {
+            setScore(s => Math.min(100, s + 0.1));
+        }
     }
 
     return { isError, feedbackMsg: localFeedback };
