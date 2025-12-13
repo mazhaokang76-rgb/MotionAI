@@ -48,6 +48,15 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   // Feedback Rate Limiting
   const lastSpokenTime = useRef<number>(0);
   const feedbackLog = useRef<string[]>([]);
+  
+  // Training data tracking
+  const poseAnalyses = useRef<Array<{angle: number, isCorrect: boolean}>>([]);
+  const errorPatterns = useRef({
+    torsoErrors: 0,
+    angleErrors: 0,
+    rangeErrors: 0,
+    totalErrors: 0
+  });
 
   // Speech Synthesis
   const speak = useCallback((text: string) => {
