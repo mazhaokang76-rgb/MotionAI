@@ -20,8 +20,12 @@ const checkAPIConfig = () => {
   log('DeepSeek 端点:', getAPIEndpoint('deepseek'));
   log('Gemini 端点:', getAPIEndpoint('gemini'));
   
-  // DeepSeek API 端点已准备就绪
-  return { hasDeepSeek: true, hasGemini: true };
+  // 启用 DeepSeek 服务（通过Serverless Function代理）
+  // 检查环境变量
+  const hasDeepSeekKey = !!(process.env.DEEPSEEK_API_KEY || process.env.VITE_DEEPSEEK_API_KEY);
+  log('DeepSeek API Key 状态:', hasDeepSeekKey ? '已配置' : '未配置');
+  
+  return { hasDeepSeek: hasDeepSeekKey, hasGemini: true };
 };
 
 // ===== DeepSeek API 调用 (通过代理) =====
