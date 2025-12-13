@@ -17,7 +17,7 @@ const checkAPIConfig = () => {
   // 在服务端，环境变量会被读取
   // 在客户端，我们只需要知道是否配置了
   log('🔑 检查 API 配置...');
-  log('Grok 端点:', getAPIEndpoint('grok'));
+  log('Grok Complete 端点:', getAPIEndpoint('grok-complete'));
   log('Gemini 端点:', getAPIEndpoint('gemini'));
   
   // 启用 Grok AI 服务（通过Serverless Function代理）
@@ -30,11 +30,11 @@ const checkAPIConfig = () => {
 
 // ===== Grok AI API 调用 (通过代理) =====
 const callGrok = async (messages: Array<{role: string, content: string}>): Promise<string> => {
-  log('📤 [Grok AI] 通过代理发送请求...');
+  log('📤 [Grok AI] 通过gro-complete端点发送请求...');
   log('📤 [Grok AI] Messages:', messages.length, '条');
 
   try {
-    const endpoint = getAPIEndpoint('grok');
+    const endpoint = getAPIEndpoint('grok-complete');
     
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -62,7 +62,7 @@ const callGrok = async (messages: Array<{role: string, content: string}>): Promi
         responseText.includes('500')) {
       error('[Grok AI] API 返回了 HTML 错误页面');
       error('这通常表示端点不存在或服务器错误');
-      throw new Error(`Grok AI 端点不可用 (${response.status}): 请检查 /api/grok 端点配置`);
+      throw new Error(`Grok AI 端点不可用 (${response.status}): 请检查 /api/grok-complete 端点配置`);
     }
 
     if (!response.ok) {
@@ -74,8 +74,8 @@ const callGrok = async (messages: Array<{role: string, content: string}>): Promi
       }
       error('[Grok AI] 请求失败:', errorData);
       
-      if (response.status === 401 || response.status === 500) {
-        throw new Error(errorData.hint || 'Grok AI API Key 未配置或无效');
+      if (response.status === 500) {
+        throw new Error(errorData.hint || errorData.error || 'Grok AI API Key 未配置或无效');
       } else if (response.status === 429) {
         throw new Error('请求过于频繁，请稍后再试');
       } else if (response.status === 402) {
@@ -247,8 +247,8 @@ export const generateWorkoutReport = async (
   // 优先使用 Grok AI
   if (hasGrok) {
     try {
-      console.log('🎯 策略: 优先使用 Grok AI API');
-      console.log('📤 正在构建请求...');
+      console.log('🎯 策略: 优先使用 Grok AI Complete API');
+      console.log('📤 正在构建请求到 gro-complete 端点...');
       console.log('');
       
       const messages = [
@@ -301,7 +301,7 @@ export const generateWorkoutReport = async (
         console.log('  主要问题:', parsed.analysis);
         console.log('  改进建议:', parsed.tip);
         console.log('');
-        console.log('🏁 ============ Grok AI 报告生成成功 ============');
+        console.log('🏁 ============ Grok AI Complete 报告生成成功 ============');
         console.log('');
         
         return JSON.stringify(parsed);
@@ -311,7 +311,7 @@ export const generateWorkoutReport = async (
       }
       
     } catch (err: any) {
-      console.error('❌ Grok AI 调用失败');
+      console.error('❌ Grok AI Complete 调用失败');
       console.error('  错误类型:', err.name);
       console.error('  错误消息:', err.message);
       console.error('');
@@ -421,7 +421,7 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
   log('💡 生成训练前提示:', exerciseName);
   
   try {
-    log('🎯 使用 Grok AI 生成提示...');
+    log('🎯 使用 Grok AI Complete 生成提示...');
     const messages = [
       { role: "system", content: "你是康复专家，提供简洁安全提示。" },
       { role: "user", content: `为"${exerciseName}"提供3条简短安全提示(每条不超过12字，一行一条，无序号):` }
@@ -429,7 +429,7 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
     
     const response = await callGrok(messages);
     if (response && response.trim().length > 0) {
-      log('✅ Grok AI 提示生成成功');
+      log('✅ Grok AI Complete 提示生成成功');
       return response.trim();
     }
   } catch (err: any) {
