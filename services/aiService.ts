@@ -256,13 +256,21 @@ export const generateWorkoutReport = async (
       console.log('📤 正在构建请求到 gro-complete 端点...');
       console.log('');
       
-      // 解析和增强训练数据
-      const detailedFeedback = session.feedbackLog || [];
       // 获取增强的训练数据
       const detailedFeedback = session.feedbackLog || [];
-      const errorPatterns = session.errorPatterns || {};
+      const errorPatterns = session.errorPatterns || {
+        torsoErrors: 0,
+        angleErrors: 0,
+        rangeErrors: 0,
+        totalErrors: 0
+      };
       const poseAnalyses = session.poseAnalyses || [];
-      const performanceMetrics = session.performanceMetrics || {};
+      const performanceMetrics = session.performanceMetrics || {
+        avgAngle: 0,
+        angleVariance: 0,
+        stabilityScore: 0,
+        consistencyScore: 0
+      };
       
       console.log('🔍 详细数据分析:');
       console.log('  错误类型统计:', errorPatterns);
@@ -432,8 +440,18 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   const feedbackLog = session.feedbackLog || [];
   
   // 获取增强的数据
-  const errorPatterns = session.errorPatterns || {};
-  const performanceMetrics = session.performanceMetrics || {};
+  const errorPatterns = session.errorPatterns || {
+    torsoErrors: 0,
+    angleErrors: 0,
+    rangeErrors: 0,
+    totalErrors: 0
+  };
+  const performanceMetrics = session.performanceMetrics || {
+    avgAngle: 0,
+    angleVariance: 0,
+    stabilityScore: 0,
+    consistencyScore: 0
+  };
   
   // 使用详细的错误统计数据
   const torsoErrors = errorPatterns.torsoErrors || 0;
