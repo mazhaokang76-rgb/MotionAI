@@ -16,7 +16,31 @@ export interface ExerciseConfig {
   standardVideoUrl: string;
 }
 
-// Workout Session Data
+// Enhanced Pose Analysis Data
+export interface PoseAnalysis {
+  angle: number;
+  timestamp: number;
+  isCorrect: boolean;
+  feedback: string;
+}
+
+// Error Pattern Classification
+export interface ErrorPatterns {
+  torsoErrors: number;    // 身体姿态对齐错误
+  angleErrors: number;    // 角度偏差错误
+  rangeErrors: number;    // 动作幅度错误
+  totalErrors: number;    // 总错误数
+}
+
+// Performance Metrics
+export interface PerformanceMetrics {
+  avgAngle: number;           // 平均角度
+  angleVariance: number;      // 角度方差
+  stabilityScore: number;     // 稳定性评分(0-100)
+  consistencyScore: number;   // 一致性评分(0-100)
+}
+
+// Enhanced Workout Session Data with detailed pose analysis
 export interface WorkoutSession {
   id: string;
   exerciseId: ExerciseType;
@@ -25,6 +49,10 @@ export interface WorkoutSession {
   accuracyScore: number;
   correctionCount: number;
   feedbackLog: string[];
+  // Enhanced data collection for AI analysis
+  poseAnalyses?: PoseAnalysis[]; // 详细的角度分析数据
+  errorPatterns?: ErrorPatterns; // 错误模式统计
+  performanceMetrics?: PerformanceMetrics; // 性能指标
 }
 
 // MediaPipe Pose Landmarks
