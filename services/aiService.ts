@@ -6,7 +6,7 @@ const log = (...args: any[]) => DEBUG && console.log('[AI Service]', ...args);
 const error = (...args: any[]) => console.error('[AI Service] ❌', ...args);
 
 // ===== API 端点配置 =====
-const getAPIEndpoint = (service: 'grok' | 'gemini') => {
+const getAPIEndpoint = (service: 'grok' | 'grok-complete' | 'gemini') => {
   // 在生产环境使用相对路径，本地开发可能需要完整 URL
   const baseUrl = window.location.origin;
   return `${baseUrl}/api/${service}`;
