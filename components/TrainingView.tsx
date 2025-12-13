@@ -50,7 +50,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   const feedbackLog = useRef<string[]>([]);
   
   // Training data tracking
-  const poseAnalyses = useRef<Array<{angle: number, isCorrect: boolean}>>([]);
+  const poseAnalyses = useRef<Array<{angle: number, isCorrect: boolean, timestamp: number, feedback: string}>>([]);
   const errorPatterns = useRef({
     torsoErrors: 0,
     angleErrors: 0,
@@ -395,6 +395,44 @@ const handleFinish = () => {
         }
     } else {
         setFeedback("姿势标准 ✅");
+    }
+
+    // Record pose analysis data
+    if (status === 'ACTIVE') {
+        // Calculate current angle for recording
+        let currentAngle = 0;
+        const landmarks = result.landmarks[0];
+        
+        if (exercise.id === 'SHOULDER_ABDUCTION') {
+            const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+            const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+            const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
+            currentAngle = calculateAngle(leftHip, leftShoulder, leftElbow);
+        } else if (exercise.id === 'ELBOW_FLEXION') {
+            const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+            const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+            const leftWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
+            currentAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
+        }
+
+        // Record analysis data
+        poseAnalyses.current.push({
+            angle: currentAngle,
+            isCorrect: !isError,
+            timestamp: Date.now(),
+            feedback: localFeedback
+        });
+
+        // Update error patterns
+        if (isError) {
+            if (torsoError > 0.15) {
+                errorPatterns.current.torsoErrors++;
+            }
+            if (exercise.id === 'SHOULDER_ABDUCTION' || exercise.id === 'ELBOW_FLEXION') {
+                errorPatterns.current.angleErrors++;
+            }
+            errorPatterns.current.totalErrors++;
+        }
     }
 
     return { isError, feedbackMsg: localFeedback };
