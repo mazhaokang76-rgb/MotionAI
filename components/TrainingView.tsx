@@ -42,12 +42,10 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   
   const isLandscapeExercise = ['SHOULDER_ABDUCTION', 'ELBOW_FLEXION'].includes(exercise.id);
   
-  // Feedback Rate Limiting
   const lastSpokenTime = useRef<number>(0);
-  const lastErrorTime = useRef<number>(0); // 用于防抖
+  const lastErrorTime = useRef<number>(0);
   const feedbackLog = useRef<string[]>([]);
   
-  // Enhanced data collection
   const poseAnalyses = useRef<PoseAnalysis[]>([]);
   const errorPatterns = useRef({
     torsoErrors: 0,
@@ -56,9 +54,9 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     totalErrors: 0
   });
   
-  // 实时统计
   const frameCount = useRef(0);
   const errorFrameCount = useRef(0);
+  const detectionCount = useRef(0); // 检测到人体的帧数
 
   const speak = useCallback((text: string) => {
     const now = Date.now();
@@ -103,10 +101,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         if (orientation && 'lock' in orientation && orientation.lock) {
           if (isLandscapeExercise) {
             await orientation.lock('landscape');
-            console.log('🔒 Locked to LANDSCAPE mode');
           } else {
             await orientation.lock('portrait');
-            console.log('🔒 Locked to PORTRAIT mode');
           }
         }
       } catch (error) {
@@ -150,12 +146,17 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
               audio: false,
             });
             
+            console.log('✅ Camera stream obtained');
+            
             if (videoRef.current) {
               videoRef.current.srcObject = stream;
               await new Promise<void>((resolve) => {
                   if(videoRef.current) {
                       videoRef.current.onloadedmetadata = () => {
-                          videoRef.current?.play().then(() => resolve());
+                          videoRef.current?.play().then(() => {
+                            console.log('✅ Video playing');
+                            resolve();
+                          });
                       };
                   }
               });
@@ -173,6 +174,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         setFeedback("正在加载 AI 视觉引擎...");
         try {
           await initializeVision();
+          console.log('✅ Vision initialized');
         } catch (err) {
           console.error("Vision initialization error:", err);
           setFeedback("AI 加载失败，但您可以继续录制");
@@ -181,6 +183,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         setIsLoading(false);
         setFeedback(isLandscapeExercise ? "请横向持握设备，站在屏幕中间" : "准备就绪，请站在屏幕中间");
         
+        console.log('🚀 Starting detection loop');
         requestRef.current = requestAnimationFrame(loop);
 
       } catch (e) {
@@ -210,24 +213,31 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   }, [status, timeLeft]);
 
   const handleFinish = () => {
+    console.log('');
+    console.log('🏁 ============ FINISHING TRAINING ============');
+    
     setStatus('COMPLETED');
     speak("训练完成。非常棒！");
     
     const analyses = poseAnalyses.current;
     const totalFrames = frameCount.current;
     const errorFrames = errorFrameCount.current;
+    const detected = detectionCount.current;
     
-    console.log('📊 训练统计:', {
-      totalFrames,
-      errorFrames,
-      analyses: analyses.length,
-      corrections: corrections
-    });
+    console.log('📊 Final Statistics:');
+    console.log('  Total Frames Processed:', totalFrames);
+    console.log('  Frames with Detection:', detected);
+    console.log('  Error Frames:', errorFrames);
+    console.log('  Pose Analyses Records:', analyses.length);
+    console.log('  Corrections Count:', corrections);
+    console.log('  Current Score:', score);
+    console.log('  Error Patterns:', errorPatterns.current);
     
     // 计算真实错误率
     const actualErrorRate = totalFrames > 0 ? (errorFrames / totalFrames) * 100 : 0;
+    console.log('  Calculated Error Rate:', actualErrorRate.toFixed(2) + '%');
     
-    // 计算最终评分（基于错误率）
+    // 计算最终评分
     let finalScore = 100 - actualErrorRate;
     finalScore = Math.max(0, Math.min(100, finalScore));
     
@@ -237,9 +247,13 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
       ? validAngles.reduce((sum, a) => sum + a.angle, 0) / validAngles.length 
       : 0;
     
+    console.log('  Average Angle:', avgAngle.toFixed(1) + '°');
+    console.log('  Valid Angle Count:', validAngles.length);
+    
     if (avgAngle < 10 && validAngles.length < analyses.length * 0.3) {
+        const oldScore = finalScore;
         finalScore = Math.max(10, finalScore * 0.2);
-        console.log('⚠️ 动作幅度不足，评分调整:', finalScore);
+        console.log('  ⚠️ Low motion detected - Score adjusted:', oldScore, '->', finalScore);
     }
     
     // 计算性能指标
@@ -250,21 +264,13 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
       ? (analyses.filter(a => a.isCorrect).length / analyses.length) * 100 
       : 0;
 
-    console.log('✅ 最终数据:', {
-      finalScore,
-      corrections,
-      errorRate: actualErrorRate,
-      avgAngle,
-      errorPatterns: errorPatterns.current
-    });
-
-    onComplete({
+    const sessionData = {
       id: Date.now().toString(),
       exerciseId: exercise.id,
       timestamp: Date.now(),
       duration: exercise.durationSec - timeLeft,
       accuracyScore: finalScore,
-      correctionCount: corrections, // 使用实际记录的纠正次数
+      correctionCount: corrections,
       feedbackLog: feedbackLog.current,
       poseAnalyses: analyses,
       errorPatterns: errorPatterns.current,
@@ -275,7 +281,19 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         consistencyScore: Math.round(consistencyScore),
         errorRate: Math.round(actualErrorRate * 10) / 10
       }
-    });
+    };
+
+    console.log('');
+    console.log('📦 Session Data to be sent:');
+    console.log('  Accuracy Score:', sessionData.accuracyScore);
+    console.log('  Correction Count:', sessionData.correctionCount);
+    console.log('  Duration:', sessionData.duration);
+    console.log('  Feedback Log entries:', sessionData.feedbackLog.length);
+    console.log('');
+    console.log('🚀 Calling onComplete with session data...');
+    console.log('');
+    
+    onComplete(sessionData);
   };
 
   const processLandmarks = (result: PoseLandmarkerResult) => {
@@ -286,12 +304,17 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
     const landmarks = result.landmarks[0];
     const currentTime = Date.now();
     
-    // 只在训练状态下计数
+    // 统计
     if (status === 'ACTIVE') {
       frameCount.current++;
+      detectionCount.current++;
+      
+      // 每100帧输出一次统计
+      if (frameCount.current % 100 === 0) {
+        console.log(`📊 [Frame ${frameCount.current}] Errors: ${errorFrameCount.current}, Corrections: ${corrections}, Score: ${Math.round(score)}`);
+      }
     }
     
-    // Check Torso
     const { aligned, error: torsoError } = checkTorsoAlignment(landmarks);
     let isError = false;
     let localFeedback = "姿势标准";
@@ -306,7 +329,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
           errorPatterns.current.torsoErrors++;
         }
     } else {
-        // Specific Exercise Logic
         if (exercise.id === 'SHOULDER_ABDUCTION') {
             const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
             const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
@@ -371,22 +393,24 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         }
     }
 
-    // Apply Feedback with debouncing
+    // Apply Feedback
     if (isError) {
         setFeedback(localFeedback);
         
         if (status === 'ACTIVE') {
             const timeSinceLastError = currentTime - lastErrorTime.current;
             
-            // 只在距离上次错误超过1.5秒时才算新的纠正
             if (timeSinceLastError > 1500) {
                 speak(localFeedback);
                 vibrate();
-                setCorrections(c => c + 1);
+                setCorrections(c => {
+                  const newCount = c + 1;
+                  console.log(`⚠️ Correction #${newCount}: ${localFeedback} (Angle: ${Math.round(currentAngle)}°)`);
+                  return newCount;
+                });
                 lastErrorTime.current = currentTime;
             }
             
-            // 实时更新评分
             setScore(s => Math.max(0, s - 0.5));
         }
     } else {
@@ -585,10 +609,14 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                     </div>
                 </div>
 
-                <div className="absolute bottom-4 left-4 bg-black/50 px-3 py-2 rounded-lg text-xs text-gray-300 z-10 backdrop-blur flex flex-col gap-1">
-                    <p>关键点: {debugAngle}°</p>
+                <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-3 rounded-lg text-xs text-gray-300 z-10 backdrop-blur flex flex-col gap-1 border border-gray-600">
+                    <p className="font-bold text-white">🔍 实时监测</p>
+                    <p>角度: {debugAngle}°</p>
                     <p>纠正: {corrections}次</p>
-                    <p className="text-gray-500">帧数: {frameCount.current}</p>
+                    <p>帧数: {frameCount.current}</p>
+                    <p>检测: {detectionCount.current}</p>
+                    <p>错误: {errorFrameCount.current}</p>
+                    <p className="text-gray-500 text-[10px]">状态: {status}</p>
                 </div>
             </>
         )}
@@ -605,11 +633,13 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         {status === 'IDLE' && !isLoading && !cameraError && (
              <button 
              onClick={() => { 
+               console.log('🚀 Starting training...');
                setStatus('ACTIVE'); 
                speak("开始跟练");
-               // 重置计数器
+               // 重置所有计数器
                frameCount.current = 0;
                errorFrameCount.current = 0;
+               detectionCount.current = 0;
                poseAnalyses.current = [];
                errorPatterns.current = {
                  torsoErrors: 0,
@@ -617,6 +647,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
                  rangeErrors: 0,
                  totalErrors: 0
                };
+               feedbackLog.current = [];
+               console.log('✅ Counters reset');
              }}
              className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-full font-bold text-lg shadow-lg shadow-blue-500/30 transition-all active:scale-95 flex-1 mx-4"
          >
@@ -627,21 +659,4 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
         {status === 'ACTIVE' && (
             <div className="flex-1 mx-4 flex flex-col items-center">
                  <p className="text-white font-mono text-2xl font-bold mb-1">
-                    {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-                </p>
-                <button 
-                    onClick={handleFinish}
-                    className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-full font-bold text-sm shadow-lg shadow-red-500/30"
-                >
-                    结束训练
-                </button>
-            </div>
-        )}
-        
-        <div className="w-[60px]"></div> 
-      </div>
-    </div>
-  );
-};
-
-export default TrainingView;
+                    {Math.
