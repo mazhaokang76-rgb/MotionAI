@@ -97,9 +97,9 @@ export default async function handler(req, res) {
       // Grok AI API 端点
       const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
       
-      // 准备Grok AI API请求
+      // 准备Grok AI API请求 - 使用最新的Grok 4.1模型
       const grokPayload = {
-        model: 'grok-beta',
+        model: 'grok-4-1-fast-non-reasoning', // 快速版本，响应更快
         messages: requestData.messages,
         temperature: requestData.temperature || 0.7,
         max_tokens: requestData.max_tokens || 1000,
@@ -179,7 +179,7 @@ export default async function handler(req, res) {
         success: true,
         content: content,
         usage: grokData.usage || null,
-        model: grokData.model || 'grok-beta',
+        model: grokData.model || 'grok-4-1-fast-non-reasoning',
         timestamp: new Date().toISOString()
       });
 
