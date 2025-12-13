@@ -21,9 +21,10 @@ const checkAPIConfig = () => {
   log('Gemini 端点:', getAPIEndpoint('gemini'));
   
   // 启用 Grok AI 服务（通过Serverless Function代理）
-  // 检查环境变量
-  const hasGrokKey = !!(process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY);
-  log('Grok AI API Key 状态:', hasGrokKey ? '已配置' : '未配置');
+  // 客户端检查：假设如果端点存在就可用（实际在服务器端检查API Key）
+  // 简化逻辑：总是尝试Grok，如果失败会自动切换到备用方案
+  const hasGrokKey = true; // 简化逻辑，让代码总是尝试Grok
+  log('Grok AI API Key 状态: 通过端点检测（简化模式）');
   
   return { hasGrok: hasGrokKey, hasGemini: true };
 };
@@ -75,7 +76,11 @@ const callGrok = async (messages: Array<{role: string, content: string}>): Promi
       error('[Grok AI] 请求失败:', errorData);
       
       if (response.status === 500) {
-        throw new Error(errorData.hint || errorData.error || 'Grok AI API Key 未配置或无效');
+        // 检查是否是API Key配置问题
+        if (responseText.includes('API Key') || responseText.includes('not configured')) {
+          throw new Error('Grok AI API Key 未配置或无效，请检查环境变量');
+        }
+        throw new Error(errorData.hint || errorData.error || 'Grok AI 服务器错误');
       } else if (response.status === 429) {
         throw new Error('请求过于频繁，请稍后再试');
       } else if (response.status === 402) {
