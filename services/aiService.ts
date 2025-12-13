@@ -453,6 +453,10 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
     consistencyScore: 0
   };
   
+  // 提前声明关键变量，避免重复声明
+  const avgAngle = performanceMetrics.avgAngle || 0;
+  const errorRate = performanceMetrics.errorRate || 0;
+  
   // 使用详细的错误统计数据
   const torsoErrors = errorPatterns.torsoErrors || 0;
   const angleErrors = errorPatterns.angleErrors || 0;
@@ -466,7 +470,6 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   let adjustedScore = score;
   const stabilityScore = performanceMetrics.stabilityScore || 0;
   const consistencyScore = performanceMetrics.consistencyScore || 0;
-  const avgAngle = performanceMetrics.avgAngle || 0;
   
   // 如果平均角度很小（接近0），说明用户基本没动
   if (avgAngle < 10) {
@@ -481,9 +484,6 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   
   let summary = `完成${exercise.name.split('(')[0].trim()}训练，`;
   
-  const errorRate = performanceMetrics.errorRate || 0;
-  const avgAngle = performanceMetrics.avgAngle || 0;
-  
   if (avgAngle < 10) {
     summary += `关节活动度不足（平均角度${avgAngle}°），动作控制能力需要提升。`;
   } else if (errorRate <= 10 && stabilityScore > 80) {
@@ -497,8 +497,6 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   }
   
   let analysis = "";
-  const avgAngle = performanceMetrics.avgAngle || 0;
-  const errorRate = performanceMetrics.errorRate || 0;
   
   if (avgAngle < 10) {
     analysis = `关节活动度严重不足（平均角度${avgAngle}°），主要问题为动作幅度控制差，可能存在肌肉激活不足或关节僵硬。`;
@@ -515,8 +513,6 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   }
   
   let tip = "";
-  const avgAngle = performanceMetrics.avgAngle || 0;
-  const errorRate = performanceMetrics.errorRate || 0;
   
   if (avgAngle < 10) {
     tip = `建议进行关节活动度训练，可先进行充分热身和关节松动训练。目标：将平均角度提升至60-90°，可使用渐进式训练方法，镜子辅助进行动作范围感知训练。`;
