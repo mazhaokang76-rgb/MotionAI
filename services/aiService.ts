@@ -258,14 +258,17 @@ export const generateWorkoutReport = async (
       
       // 解析和增强训练数据
       const detailedFeedback = session.feedbackLog || [];
-      const errorCount = detailedFeedback.filter(msg => 
-        msg.includes('歪了') || msg.includes('抬高') || msg.includes('太低') || 
-        msg.includes('完全伸直') || msg.includes('弯曲角度') || msg.includes('纠正')
-      ).length;
+      // 获取增强的训练数据
+      const detailedFeedback = session.feedbackLog || [];
+      const errorPatterns = session.errorPatterns || {};
+      const poseAnalyses = session.poseAnalyses || [];
+      const performanceMetrics = session.performanceMetrics || {};
       
       console.log('🔍 详细数据分析:');
-      console.log('  错误类型统计:', errorCount, '次');
+      console.log('  错误类型统计:', errorPatterns);
       console.log('  反馈记录详细:', detailedFeedback);
+      console.log('  姿态分析记录数:', poseAnalyses.length);
+      console.log('  性能指标:', performanceMetrics);
       console.log('');
       
       const messages = [
@@ -290,24 +293,28 @@ export const generateWorkoutReport = async (
 【具体姿态错误记录】(基于视频捕捉):
 ${session.feedbackLog ? session.feedbackLog.map((log, i) => `${i + 1}. ${log}`).join('\n') : '无记录'}
 
-【错误类型统计】:
-- 姿态对齐错误: ${(session.feedbackLog || []).filter(msg => msg.includes('歪了') || msg.includes('核心')).length}次
-- 角度偏差错误: ${(session.feedbackLog || []).filter(msg => msg.includes('抬高') || msg.includes('太低') || msg.includes('角度')).length}次  
-- 动作幅度错误: ${(session.feedbackLog || []).filter(msg => msg.includes('伸直') || msg.includes('弯曲')).length}次
-- 其他纠正: ${(session.feedbackLog || []).filter(msg => msg.includes('纠正')).length}次
+【详细姿态分析数据】:
+- 姿态对齐错误: ${errorPatterns.torsoErrors || 0}次
+- 角度偏差错误: ${errorPatterns.angleErrors || 0}次  
+- 动作幅度错误: ${errorPatterns.rangeErrors || 0}次
+- 姿态分析记录总数: ${poseAnalyses.length}条
+- 平均角度: ${performanceMetrics.avgAngle || 0}度
+- 稳定性评分: ${performanceMetrics.stabilityScore || 0}分
+- 一致性评分: ${performanceMetrics.consistencyScore || 0}分
 
 【专业评估要求】
 作为康复治疗师，请基于这些客观姿态数据提供专业分析：
 
-1. "summary": 综合评估，重点分析姿态控制能力和动作一致性(25-35字)
-2. "analysis": 基于具体错误记录的专业分析：包括错误类型分布、动作稳定性、肌肉控制质量等(40-60字)
-3. "tip": 针对发现的错误模式的专项训练建议(30-45字)
+1. "summary": 基于客观数据综合评估，重点关注稳定性、一致性和错误模式(25-35字)
+2. "analysis": 专业分析包括：错误类型分布(姿态/角度/幅度)、稳定性评分、一致性评分、动作控制质量等(40-60字)
+3. "tip": 针对数据发现的具体错误模式，提供量化的专项训练建议(30-45字)
 
 ⚠️ 客观分析要求：
-- 必须统计和分析具体错误类型，不要简单看总分
-- 重点分析动作的一致性和稳定性问题
-- 基于错误频率提供量化的改进建议
-- 建议要具体到动作要领和训练方法
+- 必须基于详细姿态分析数据，不能只看准确度评分
+- 重点分析稳定性评分和一致性评分背后的动作质量问题
+- 基于错误类型的具体频率提供优先级建议
+- 建议要基于数据驱动的动作要领和训练方法
+- 如果有角度数据，必须分析角度范围和变化模式
 
 请用中文回答，返回标准JSON格式，不要包含任何解释文字或markdown标记。`
         }
@@ -424,46 +431,58 @@ const generateFallbackReport = (session: WorkoutSession, exercise: ExerciseConfi
   const corrections = session.correctionCount;
   const feedbackLog = session.feedbackLog || [];
   
-  // 基于实际反馈记录分析错误类型
-  const torsoErrors = feedbackLog.filter(msg => msg.includes('歪了') || msg.includes('核心')).length;
-  const angleErrors = feedbackLog.filter(msg => msg.includes('抬高') || msg.includes('太低') || msg.includes('角度')).length;
-  const rangeErrors = feedbackLog.filter(msg => msg.includes('伸直') || msg.includes('弯曲')).length;
+  // 获取增强的数据
+  const errorPatterns = session.errorPatterns || {};
+  const performanceMetrics = session.performanceMetrics || {};
+  
+  // 使用详细的错误统计数据
+  const torsoErrors = errorPatterns.torsoErrors || 0;
+  const angleErrors = errorPatterns.angleErrors || 0;
+  const rangeErrors = errorPatterns.rangeErrors || 0;
   
   log('🔍 错误类型分析:', { torsoErrors, angleErrors, rangeErrors, corrections });
+  log('📊 性能指标:', performanceMetrics);
   
   let summary = `完成${exercise.name.split('(')[0].trim()}，`;
-  if (torsoErrors === 0 && angleErrors === 0 && rangeErrors === 0) {
-    summary += "姿态控制优秀，动作规范！";
-  } else if (corrections <= 3) {
-    summary += "整体表现良好，细节有待提升。";
+  const stabilityScore = performanceMetrics.stabilityScore || 0;
+  const consistencyScore = performanceMetrics.consistencyScore || 0;
+  
+  if (torsoErrors === 0 && angleErrors === 0 && rangeErrors === 0 && stabilityScore > 80) {
+    summary += `姿态控制优秀，稳定性${stabilityScore}分！`;
+  } else if (consistencyScore > 70 && stabilityScore > 60) {
+    summary += `整体表现良好，稳定性${stabilityScore}分。`;
+  } else if (stabilityScore < 40) {
+    summary += `动作控制不稳定，稳定性仅${stabilityScore}分。`;
   } else {
     summary += "动作需要改进，注意控制质量。";
   }
   
   let analysis = "";
-  if (torsoErrors > angleErrors && torsoErrors > rangeErrors) {
-    analysis = "主要问题是身体姿态不正，核心稳定性需要加强训练。";
+  if (torsoErrors > Math.max(angleErrors, rangeErrors)) {
+    analysis = `核心稳定性不足(${torsoErrors}次错误)，稳定性评分${stabilityScore}分，建议加强躯干控制训练。`;
   } else if (angleErrors > rangeErrors) {
-    analysis = "动作幅度控制有问题，需要精确掌握标准角度范围。";
+    analysis = `动作幅度控制问题(${angleErrors}次偏差)，一致性评分${consistencyScore}分，需精确掌握角度范围。`;
   } else if (rangeErrors > 0) {
-    analysis = "关节活动度不足，建议增加热身和拉伸训练。";
+    analysis = `关节活动度不足(${rangeErrors}次超限)，建议增加热身和活动度训练。`;
+  } else if (stabilityScore < 60) {
+    analysis = `动作不够稳定(稳定性${stabilityScore}分)，需要加强肌肉控制和动作连贯性训练。`;
   } else {
-    analysis = "动作规范度较高，继续保持当前训练强度。";
+    analysis = `动作规范度较高，稳定性${stabilityScore}分，一致性${consistencyScore}分，继续保持。`;
   }
   
   let tip = "";
-  if (torsoErrors > 0) {
-    tip = "加强核心稳定性训练，动作前先收紧腹部肌肉。";
-  } else if (angleErrors > 0) {
-    tip = "放慢动作节奏，精确感受标准动作幅度范围。";
+  if (torsoErrors > 0 || stabilityScore < 60) {
+    tip = `重点加强核心稳定性训练，稳定性目标提升到80分以上，当前${stabilityScore}分。`;
+  } else if (angleErrors > 0 || consistencyScore < 70) {
+    tip = `放慢动作节奏练习，精确感受标准幅度，目标一致性提升到80分以上。`;
   } else if (rangeErrors > 0) {
-    tip = "增加关节活动度训练，充分热身后再开始正式训练。";
+    tip = "充分热身和关节活动度训练，增加拉伸练习后再进行正式训练。";
   } else {
-    tip = "保持当前训练水平，可适当增加训练强度和频率。";
+    tip = `保持当前训练水平，可适当增加强度。稳定性目标：${Math.min(100, stabilityScore + 10)}分。`;
   }
   
   const report = { summary, analysis, tip };
-  log('✅ 基于数据的备用报告生成:', report);
+  log('✅ 基于详细数据的备用报告生成:', report);
   
   return report;
 };
