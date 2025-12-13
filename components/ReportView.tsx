@@ -13,7 +13,7 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
- useEffect(() => {
+  useEffect(() => {
     console.log('');
     console.log('='.repeat(80));
     console.log('📥 [ReportView] DATA RECEPTION CHECK');
@@ -71,95 +71,6 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
             console.log('   - analysis:', parsed.analysis);
             console.log('   - tip:', parsed.tip);
             console.log('');
-            
-            if (!parsed.summary || !parsed.analysis || !parsed.tip) {
-                console.warn('⚠️  [ReportView] Incomplete report data');
-                setAiReport({
-                    summary: parsed.summary || "训练完成",
-                    analysis: parsed.analysis || "数据处理中",
-                    tip: parsed.tip || "继续训练"
-                });
-                setLoadError(true);
-            } else {
-                console.log('✅ [ReportView] Complete report received');
-                setAiReport(parsed);
-                setLoadError(false);
-            }
-            
-        } catch (error: any) {
-            console.error('❌ [ReportView] Report generation failed:');
-            console.error('   Error:', error.message);
-            console.error('   Stack:', error.stack);
-            console.error('');
-            
-            setLoadError(true);
-            
-            const fallbackReport = {
-                summary: `完成训练，评分 ${Math.round(session.accuracyScore)} 分`,
-                analysis: session.correctionCount > 5 
-                    ? "有一些姿势问题，建议放慢速度。" 
-                    : "整体表现良好，继续保持。",
-                tip: "训练前充分热身，注意核心收紧。"
-            };
-            
-            console.log('💾 [ReportView] Using fallback report:', fallbackReport);
-            setAiReport(fallbackReport);
-        } finally {
-            setIsLoading(false);
-            console.log('🏁 [ReportView] Report fetch process completed');
-            console.log('='.repeat(80));
-            console.log('');
-        }
-    };
-     
-        // 详细打印接收到的数据
-        console.log('📊 [ReportView] 接收到的 session 数据:');
-        console.log('  - exerciseId:', session.exerciseId);
-        console.log('  - duration:', session.duration, '秒');
-        console.log('  - accuracyScore:', session.accuracyScore.toFixed(1), '分');
-        console.log('  - correctionCount:', session.correctionCount, '次');
-        console.log('  - feedbackLog 长度:', session.feedbackLog?.length || 0);
-        console.log('  - timestamp:', new Date(session.timestamp).toLocaleString());
-        
-        console.log('🎯 [ReportView] 接收到的 exercise 数据:');
-        console.log('  - id:', exercise.id);
-        console.log('  - name:', exercise.name);
-        console.log('  - description:', exercise.description);
-        console.log('  - durationSec:', exercise.durationSec);
-        
-        setIsLoading(true);
-        setLoadError(false);
-        
-        try {
-            console.log('📤 [ReportView] 调用 generateWorkoutReport...');
-            console.log('传递参数:', {
-                session: {
-                    duration: session.duration,
-                    score: session.accuracyScore,
-                    corrections: session.correctionCount
-                },
-                exercise: {
-                    name: exercise.name,
-                    description: exercise.description
-                }
-            });
-            
-            const jsonStr = await generateWorkoutReport(session, exercise);
-            
-            console.log('📦 [ReportView] 收到响应:');
-            console.log('  - 响应类型:', typeof jsonStr);
-            console.log('  - 响应长度:', jsonStr?.length || 0);
-            console.log('  - 响应内容:', jsonStr);
-            
-            if (!jsonStr || jsonStr.trim() === '') {
-                throw new Error('AI 服务返回空响应');
-            }
-            
-            const parsed = JSON.parse(jsonStr);
-            console.log('✅ [ReportView] JSON 解析成功:');
-            console.log('  - summary:', parsed.summary);
-            console.log('  - analysis:', parsed.analysis);
-            console.log('  - tip:', parsed.tip);
             
             // 验证数据完整性
             if (!parsed.summary || !parsed.analysis || !parsed.tip) {
