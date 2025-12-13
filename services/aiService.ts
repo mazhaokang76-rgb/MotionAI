@@ -259,26 +259,30 @@ export const generateWorkoutReport = async (
       const messages = [
         {
           role: "system",
-          content: "你是专业康复治疗师。分析训练数据并用中文返回JSON评价。必须只返回有效的JSON格式，不要有其他文字或markdown标记。"
+          content: "你是一位资深的康复治疗师，具有丰富的临床经验。请基于训练数据分析患者的表现，提供专业、具体的康复建议。分析要客观准确，建议要实用可操作。"
         },
         {
           role: "user",
-          content: `分析以下训练数据并返回JSON:
+          content: `请分析以下康复训练数据并返回专业评估：
 
-项目: ${exerciseConfig.name}
-说明: ${exerciseConfig.description}
-时长: ${session.duration}秒
-评分: ${session.accuracyScore.toFixed(1)}分 (满分100)
-纠正: ${session.correctionCount}次
+【训练项目信息】
+项目名称: ${exerciseConfig.name}
+项目说明: ${exerciseConfig.description}
 
-返回纯JSON格式:
-{
-  "summary": "简短总结(20字内)",
-  "analysis": "问题分析(30字内)",
-  "tip": "改进建议(25字内)"
-}
+【训练表现数据】
+- 训练时长: ${session.duration}秒
+- 动作评分: ${session.accuracyScore.toFixed(1)}分 (满分100分)
+- 姿势纠正次数: ${session.correctionCount}次
+- 反馈记录: ${session.feedbackLog?.length || 0}条
 
-要求: 只返回JSON对象，不要包含任何解释或markdown标记。`
+【评估要求】
+请从康复治疗师的专业角度，提供以下三个维度的评估：
+
+1. "summary": 综合评价本次训练表现(25-35字)
+2. "analysis": 基于数据的专业分析，包括动作质量、训练强度、常见问题等(40-60字)  
+3. "tip": 具体的改进建议和下步训练要点(30-45字)
+
+请用中文回答，返回标准JSON格式，不要包含任何解释文字或markdown标记。`
         }
       ];
 
@@ -428,8 +432,25 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
   try {
     log('🎯 使用 Grok AI Complete 生成提示...');
     const messages = [
-      { role: "system", content: "你是康复专家，提供简洁安全提示。" },
-      { role: "user", content: `为"${exerciseName}"提供3条简短安全提示(每条不超过12字，一行一条，无序号):` }
+      { 
+        role: "system", 
+        content: "你是一位专业的康复治疗师。需要为患者提供专业、详细、实用的训练前安全提示。每条提示要包含：具体动作要领、安全注意事项、常见错误提醒。请用中文回答。" 
+      },
+      { 
+        role: "user", 
+        content: `请为"${exerciseName}"这个康复训练项目提供3条专业安全提示：
+
+要求：
+1. 每条提示控制在15-20字之间
+2. 包含具体的动作要领和安全提醒
+3. 一行一条，无序号
+4. 实用性要强，适合患者操作
+
+格式示例：
+保持肩部稳定，核心收紧发力
+动作幅度循序渐进，避免过度拉伸
+感到不适立即停止，量力而行` 
+      }
     ];
     
     const response = await callGrok(messages);
@@ -447,9 +468,9 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
 
 const getFallbackTips = (exerciseName: string): string => {
   const tips: Record<string, string> = {
-    "双臂外展": "确保周围空间充足\n保持核心收紧\n动作缓慢可控",
-    "肘关节屈伸": "避免过度用力\n保持呼吸顺畅\n感到疼痛立即停止",
-    "康复深蹲": "膝盖不超过脚尖\n背部保持挺直\n下蹲深度量力而行"
+    "双臂外展": "保持肩胛稳定，核心收紧发力\n动作幅度循序渐进，避免代偿\n疼痛即停，勿勉强继续训练",
+    "肘关节屈伸": "避免过度用力，保护关节\n保持呼吸节奏，动作流畅\n疼痛不适立即停止，调整强度",
+    "康复深蹲": "膝盖与脚尖保持同一方向\n下蹲深度量力而行，注意控制\n核心收紧，保持脊柱中立位"
   };
 
   for (const key in tips) {
@@ -458,5 +479,5 @@ const getFallbackTips = (exerciseName: string): string => {
     }
   }
 
-  return "充分热身准备\n注意动作规范\n量力而行";
+  return "充分热身准备，注意身体状态\n动作规范标准，避免代偿模式\n训练强度适中，量力而行安全第一";
 };
