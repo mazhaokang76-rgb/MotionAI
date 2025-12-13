@@ -6,7 +6,7 @@ const log = (...args: any[]) => DEBUG && console.log('[AI Service]', ...args);
 const error = (...args: any[]) => console.error('[AI Service] ❌', ...args);
 
 // ===== API 端点配置 =====
-const getAPIEndpoint = (service: 'deepseek' | 'gemini') => {
+const getAPIEndpoint = (service: 'grok' | 'gemini') => {
   // 在生产环境使用相对路径，本地开发可能需要完整 URL
   const baseUrl = window.location.origin;
   return `${baseUrl}/api/${service}`;
@@ -17,24 +17,24 @@ const checkAPIConfig = () => {
   // 在服务端，环境变量会被读取
   // 在客户端，我们只需要知道是否配置了
   log('🔑 检查 API 配置...');
-  log('DeepSeek 端点:', getAPIEndpoint('deepseek'));
+  log('Grok 端点:', getAPIEndpoint('grok'));
   log('Gemini 端点:', getAPIEndpoint('gemini'));
   
-  // 启用 DeepSeek 服务（通过Serverless Function代理）
+  // 启用 Grok AI 服务（通过Serverless Function代理）
   // 检查环境变量
-  const hasDeepSeekKey = !!(process.env.DEEPSEEK_API_KEY || process.env.VITE_DEEPSEEK_API_KEY);
-  log('DeepSeek API Key 状态:', hasDeepSeekKey ? '已配置' : '未配置');
+  const hasGrokKey = !!(process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY);
+  log('Grok AI API Key 状态:', hasGrokKey ? '已配置' : '未配置');
   
-  return { hasDeepSeek: hasDeepSeekKey, hasGemini: true };
+  return { hasGrok: hasGrokKey, hasGemini: true };
 };
 
-// ===== DeepSeek API 调用 (通过代理) =====
-const callDeepSeek = async (messages: Array<{role: string, content: string}>): Promise<string> => {
-  log('📤 [DeepSeek] 通过代理发送请求...');
-  log('📤 [DeepSeek] Messages:', messages.length, '条');
+// ===== Grok AI API 调用 (通过代理) =====
+const callGrok = async (messages: Array<{role: string, content: string}>): Promise<string> => {
+  log('📤 [Grok AI] 通过代理发送请求...');
+  log('📤 [Grok AI] Messages:', messages.length, '条');
 
   try {
-    const endpoint = getAPIEndpoint('deepseek');
+    const endpoint = getAPIEndpoint('grok');
     
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -48,11 +48,11 @@ const callDeepSeek = async (messages: Array<{role: string, content: string}>): P
       })
     });
 
-    log('📡 [DeepSeek] Response:', response.status, response.statusText);
+    log('📡 [Grok AI] Response:', response.status, response.statusText);
 
     // 获取原始响应文本用于调试
     const responseText = await response.text();
-    log('📄 [DeepSeek] 原始响应预览:', responseText.substring(0, 100));
+    log('📄 [Grok AI] 原始响应预览:', responseText.substring(0, 100));
     
     // 检查是否返回 HTML 页面（错误页面）
     if (responseText.includes('<html') || 
@@ -60,9 +60,9 @@ const callDeepSeek = async (messages: Array<{role: string, content: string}>): P
         responseText.includes('The page') ||
         responseText.includes('404') ||
         responseText.includes('500')) {
-      error('[DeepSeek] API 返回了 HTML 错误页面');
+      error('[Grok AI] API 返回了 HTML 错误页面');
       error('这通常表示端点不存在或服务器错误');
-      throw new Error(`DeepSeek API 端点不可用 (${response.status}): 请检查 /api/deepseek 端点配置`);
+      throw new Error(`Grok AI 端点不可用 (${response.status}): 请检查 /api/grok 端点配置`);
     }
 
     if (!response.ok) {
@@ -72,14 +72,14 @@ const callDeepSeek = async (messages: Array<{role: string, content: string}>): P
       } catch {
         errorData = { error: `非 JSON 响应 (${response.status})`, message: responseText };
       }
-      error('[DeepSeek] 请求失败:', errorData);
+      error('[Grok AI] 请求失败:', errorData);
       
       if (response.status === 401 || response.status === 500) {
-        throw new Error(errorData.hint || 'DeepSeek API Key 未配置或无效');
+        throw new Error(errorData.hint || 'Grok AI API Key 未配置或无效');
       } else if (response.status === 429) {
         throw new Error('请求过于频繁，请稍后再试');
       } else if (response.status === 402) {
-        throw new Error('DeepSeek 账户余额不足');
+        throw new Error('Grok AI 账户余额不足');
       } else {
         throw new Error(errorData.error || `API Error: ${response.status}`);
       }
@@ -90,23 +90,23 @@ const callDeepSeek = async (messages: Array<{role: string, content: string}>): P
     try {
       data = JSON.parse(responseText);
     } catch (parseError) {
-      error('[DeepSeek] JSON 解析失败:', parseError);
+      error('[Grok AI] JSON 解析失败:', parseError);
       error('响应内容:', responseText.substring(0, 200));
-      throw new Error('DeepSeek API 返回了无法解析的响应');
+      throw new Error('Grok AI API 返回了无法解析的响应');
     }
     
     if (!data.success || !data.content) {
-      error('[DeepSeek] 响应格式错误:', data);
-      throw new Error('DeepSeek 返回空内容');
+      error('[Grok AI] 响应格式错误:', data);
+      throw new Error('Grok AI 返回空内容');
     }
     
     const content = data.content;
-    log('✅ [DeepSeek] 响应长度:', content.length);
-    log('📄 [DeepSeek] 响应预览:', content.substring(0, 100));
+    log('✅ [Grok AI] 响应长度:', content.length);
+    log('📄 [Grok AI] 响应预览:', content.substring(0, 100));
     
     return content;
   } catch (err: any) {
-    error('[DeepSeek] 调用异常:', err.message);
+    error('[Grok AI] 调用异常:', err.message);
     throw err;
   }
 };
@@ -237,17 +237,17 @@ export const generateWorkoutReport = async (
   console.log('  反馈记录:', session.feedbackLog?.length || 0, '条');
   console.log('');
 
-  const { hasDeepSeek, hasGemini } = checkAPIConfig();
+  const { hasGrok, hasGemini } = checkAPIConfig();
   
   console.log('🔑 API 配置状态:');
-  console.log('  DeepSeek:', hasDeepSeek ? '✅ 可用' : '❌ 不可用');
+  console.log('  Grok AI:', hasGrok ? '✅ 可用' : '❌ 不可用');
   console.log('  Gemini:', hasGemini ? '✅ 可用' : '❌ 不可用');
   console.log('');
 
-  // 优先使用 DeepSeek
-  if (hasDeepSeek) {
+  // 优先使用 Grok AI
+  if (hasGrok) {
     try {
-      console.log('🎯 策略: 优先使用 DeepSeek API');
+      console.log('🎯 策略: 优先使用 Grok AI API');
       console.log('📤 正在构建请求...');
       console.log('');
       
@@ -277,9 +277,9 @@ export const generateWorkoutReport = async (
         }
       ];
 
-      const responseText = await callDeepSeek(messages);
+      const responseText = await callGrok(messages);
       console.log('');
-      console.log('📥 收到 DeepSeek 响应');
+      console.log('📥 收到 Grok AI 响应');
       console.log('  响应长度:', responseText.length, '字符');
       console.log('  响应预览:', responseText.substring(0, 150));
       console.log('');
@@ -301,17 +301,17 @@ export const generateWorkoutReport = async (
         console.log('  主要问题:', parsed.analysis);
         console.log('  改进建议:', parsed.tip);
         console.log('');
-        console.log('🏁 ============ DeepSeek 报告生成成功 ============');
+        console.log('🏁 ============ Grok AI 报告生成成功 ============');
         console.log('');
         
         return JSON.stringify(parsed);
       } else {
-        console.log('⚠️ DeepSeek 返回的报告结构不完整');
+        console.log('⚠️ Grok AI 返回的报告结构不完整');
         throw new Error('报告结构不完整');
       }
       
     } catch (err: any) {
-      console.error('❌ DeepSeek 调用失败');
+      console.error('❌ Grok AI 调用失败');
       console.error('  错误类型:', err.name);
       console.error('  错误消息:', err.message);
       console.error('');
@@ -421,15 +421,15 @@ export const generatePreWorkoutTips = async (exerciseName: string): Promise<stri
   log('💡 生成训练前提示:', exerciseName);
   
   try {
-    log('🎯 使用 DeepSeek 生成提示...');
+    log('🎯 使用 Grok AI 生成提示...');
     const messages = [
       { role: "system", content: "你是康复专家，提供简洁安全提示。" },
       { role: "user", content: `为"${exerciseName}"提供3条简短安全提示(每条不超过12字，一行一条，无序号):` }
     ];
     
-    const response = await callDeepSeek(messages);
+    const response = await callGrok(messages);
     if (response && response.trim().length > 0) {
-      log('✅ DeepSeek 提示生成成功');
+      log('✅ Grok AI 提示生成成功');
       return response.trim();
     }
   } catch (err: any) {
