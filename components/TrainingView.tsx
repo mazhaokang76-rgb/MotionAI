@@ -40,7 +40,9 @@ const TrainingView: React.FC<TrainingViewProps> = ({ exercise, onComplete, onCan
   const [debugAngle, setDebugAngle] = useState<number>(0);
   const [videoError, setVideoError] = useState(false);
   
-  // 🔴 核心修复：使用 ref 存储实时数据，确保数据准确性
+  // 🔴 核心修复：使用 ref 存储实时数据和状态，避免闭包陷阱
+  const statusRef = useRef<'IDLE' | 'ACTIVE' | 'COMPLETED'>('IDLE');
+  
   const realtimeDataRef = useRef({
     currentScore: 100,
     currentCorrections: 0,
@@ -294,8 +296,8 @@ const handleFinish = () => {
 
     const landmarks = result.landmarks[0];
     
-    // 🔴 强制日志：无论什么状态都输出
-    const currentStatus = status;
+    // 🔴 关键修复：从 ref 读取状态，避免闭包陷阱
+    const currentStatus = statusRef.current;
     
     // 🔴 重要：先计算角度，再检查错误
     let currentAngle = 0;
@@ -316,7 +318,7 @@ const handleFinish = () => {
             currentAngle = calculateAngle(leftHip, leftShoulder, leftElbow);
             setDebugAngle(Math.round(currentAngle));
             
-            // 🔴 强制输出角度，无论状态
+            // 🔴 调试输出
             if (realtimeDataRef.current.poseAnalyses.length % 30 === 0) {
                 console.log(`[Pose Check] 状态=${currentStatus}, 肩外展角度=${currentAngle.toFixed(1)}°, 躯干偏差=${(torsoError * 100).toFixed(1)}%`);
             }
@@ -686,7 +688,8 @@ const handleFinish = () => {
              onClick={() => { 
                console.log('🎬 用户点击"开始跟练"按钮');
                console.log('🔄 状态切换: IDLE → ACTIVE');
-               setStatus('ACTIVE'); 
+               setStatus('ACTIVE');
+               statusRef.current = 'ACTIVE'; // 🔴 关键：同步更新 ref
                speak("开始跟练");
                console.log('✅ 状态已设置为 ACTIVE，开始记录数据');
              }}
