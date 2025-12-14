@@ -16,57 +16,82 @@ const ReportView: React.FC<ReportViewProps> = ({ session, exercise, onClose }) =
 useEffect(() => {
     console.log('');
     console.log('='.repeat(80));
-    console.log('📥 [ReportView] DATA RECEPTION CHECK');
+    console.log('🏁 [ReportView] 开始生成报告');
     console.log('='.repeat(80));
     console.log('');
-    console.log('🔍 RECEIVED SESSION DATA:');
-    console.log('  ├─ Exercise Name:', exercise.name);
-    console.log('  ├─ Exercise ID:', session.exerciseId);
-    console.log('  ├─ Duration:', session.duration, 'seconds');
-    console.log('  ├─ Accuracy Score:', session.accuracyScore, '← 🔴 CHECK THIS');
-    console.log('  ├─ Correction Count:', session.correctionCount, '← 🔴 CHECK THIS');
-    console.log('  ├─ Feedback Log:', session.feedbackLog?.length || 0, 'entries');
-    console.log('  ├─ Pose Analyses:', session.poseAnalyses?.length || 0, 'records');
-    console.log('  └─ Error Patterns:', session.errorPatterns);
+    
+    // 🔴 详细验证接收到的数据
+    console.log('📊 [ReportView] 接收到的 session 数据:');
+    console.log('  - exerciseId:', session.exerciseId);
+    console.log('  - duration:', session.duration, '秒');
+    console.log('  - accuracyScore:', session.accuracyScore.toFixed(1), '分');
+    console.log('  - correctionCount:', session.correctionCount, '次');
+    console.log('  - feedbackLog 长度:', session.feedbackLog?.length || 0);
+    console.log('  - poseAnalyses 长度:', session.poseAnalyses?.length || 0, '← 🔴 关键数据');
+    console.log('  - errorPatterns:', session.errorPatterns || '无');
+    console.log('  - performanceMetrics:', session.performanceMetrics || '无');
+    console.log('  - timestamp:', new Date(session.timestamp).toLocaleString());
     console.log('');
     
-    // 🔴 关键验证：检查数据是否正确
-    if (session.accuracyScore === 100 && session.correctionCount === 0) {
-        console.warn('⚠️  WARNING: Perfect score detected!');
-        console.warn('   This might be correct, or data might not be transmitted properly.');
-        console.warn('   Check TrainingView logs to verify real-time counters.');
+    console.log('🎯 [ReportView] 接收到的 exercise 数据:');
+    console.log('  - id:', exercise.id);
+    console.log('  - name:', exercise.name);
+    console.log('  - description:', exercise.description);
+    console.log('  - durationSec:', exercise.durationSec);
+    console.log('');
+    
+    // 🔴 关键检查：poseAnalyses 是否存在
+    if (!session.poseAnalyses || session.poseAnalyses.length === 0) {
+        console.error('❌❌❌ 严重错误：session.poseAnalyses 为空或不存在！');
+        console.error('这意味着训练过程中没有记录任何姿态数据。');
+        console.error('请检查 TrainingView 的 handleFinish 函数是否正确传递了数据。');
+        console.error('');
+        console.error('当前 session 对象的所有键:', Object.keys(session));
+        console.error('完整 session 对象:', session);
     } else {
-        console.log('✅ Data looks valid (non-perfect score detected)');
+        console.log('✅ poseAnalyses 数据存在，包含', session.poseAnalyses.length, '条记录');
+        console.log('   - 前3条示例:', session.poseAnalyses.slice(0, 3));
     }
     console.log('');
     
     const fetchReport = async () => {
-        console.log('📤 [ReportView] Preparing to call AI Service...');
-        console.log('   Sending to generateWorkoutReport():');
-        console.log('   - session.accuracyScore:', session.accuracyScore);
-        console.log('   - session.correctionCount:', session.correctionCount);
-        console.log('   - exercise.name:', exercise.name);
+        console.log('📤 [ReportView] 调用 generateWorkoutReport...');
+        console.log('传递参数:', {
+            exercise: {
+                name: exercise.name,
+                description: exercise.description
+            },
+            session: {
+                duration: session.duration,
+                accuracyScore: session.accuracyScore,
+                correctionCount: session.correctionCount,
+                poseAnalysesCount: session.poseAnalyses?.length || 0,
+                errorPatterns: session.errorPatterns,
+                performanceMetrics: session.performanceMetrics
+            }
+        });
         console.log('');
         
         setIsLoading(true);
         setLoadError(false);
         
         try {
-            console.log('📡 [ReportView] Calling generateWorkoutReport...');
+            // 🔴 关键：直接传递完整的 session 和 exercise 对象
+            console.log('📡 [ReportView] 调用 AI 服务...');
             const jsonStr = await generateWorkoutReport(session, exercise);
             
-            console.log('📥 [ReportView] Received response from AI Service');
-            console.log('   Response type:', typeof jsonStr);
-            console.log('   Response length:', jsonStr?.length || 0);
-            console.log('   Response preview:', jsonStr?.substring(0, 100));
+            console.log('📥 [ReportView] 收到 AI 响应');
+            console.log('   响应类型:', typeof jsonStr);
+            console.log('   响应长度:', jsonStr?.length || 0);
+            console.log('   响应预览:', jsonStr?.substring(0, 150));
             console.log('');
             
             if (!jsonStr || jsonStr.trim() === '') {
-                throw new Error('AI Service returned empty response');
+                throw new Error('AI Service 返回空响应');
             }
             
             const parsed = JSON.parse(jsonStr);
-            console.log('✅ [ReportView] JSON parsed successfully:');
+            console.log('✅ [ReportView] JSON 解析成功:');
             console.log('   - summary:', parsed.summary);
             console.log('   - analysis:', parsed.analysis);
             console.log('   - tip:', parsed.tip);
@@ -81,7 +106,6 @@ useEffect(() => {
                     tip: !!parsed.tip
                 });
                 
-                // 尝试修复不完整的数据
                 setAiReport({
                     summary: parsed.summary || "训练完成",
                     analysis: parsed.analysis || "数据处理中",
@@ -99,24 +123,32 @@ useEffect(() => {
             console.error('  - 错误类型:', error.name);
             console.error('  - 错误消息:', error.message);
             console.error('  - 错误堆栈:', error.stack);
+            console.error('');
             
             setLoadError(true);
             
-            // 紧急备用方案
+            // 智能备用方案
             const fallbackReport = {
-                summary: `完成训练，评分 ${Math.round(session.accuracyScore)} 分`,
+                summary: `完成${exercise.name.split('(')[0].trim()}训练 ${session.duration}秒，评分 ${Math.round(session.accuracyScore)} 分`,
                 analysis: session.correctionCount > 5 
-                    ? "有一些姿势问题，建议放慢速度。" 
-                    : "整体表现良好，继续保持。",
-                tip: "训练前充分热身，注意核心收紧。"
+                    ? `训练中出现 ${session.correctionCount} 次姿势纠正，建议放慢速度，注重动作质量。` 
+                    : session.correctionCount > 0
+                    ? `出现 ${session.correctionCount} 次小幅调整，整体表现良好，继续保持。`
+                    : "动作规范度高，保持当前训练强度。",
+                tip: session.accuracyScore < 70 
+                    ? "建议反复观看标准示范视频，理解正确动作要领。" 
+                    : session.accuracyScore < 85
+                    ? "训练前充分热身，保持核心收紧，控制呼吸节奏。"
+                    : "继续保持，可适当增加训练强度或时长。"
             };
             
-            console.log('💾 [ReportView] 使用紧急备用方案:', fallbackReport);
+            console.log('💾 [ReportView] 使用智能备用方案:', fallbackReport);
             setAiReport(fallbackReport);
         } finally {
             setIsLoading(false);
             console.log('🏁 [ReportView] 报告获取流程结束');
-            console.log('='.repeat(60));
+            console.log('='.repeat(80));
+            console.log('');
         }
     };
     
@@ -149,6 +181,35 @@ useEffect(() => {
                     </p>
                 </div>
             </div>
+
+            {/* 🔴 新增：详细数据展示 */}
+            {session.poseAnalyses && session.poseAnalyses.length > 0 && (
+                <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 mb-6">
+                    <p className="text-slate-400 text-xs uppercase mb-2">训练详情</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                            <span className="text-slate-400">记录帧数:</span>
+                            <span className="text-white ml-2">{session.poseAnalyses.length}</span>
+                        </div>
+                        {session.performanceMetrics && (
+                            <>
+                                <div>
+                                    <span className="text-slate-400">平均角度:</span>
+                                    <span className="text-white ml-2">{session.performanceMetrics.avgAngle}°</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400">稳定性:</span>
+                                    <span className="text-white ml-2">{session.performanceMetrics.stabilityScore}分</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400">一致性:</span>
+                                    <span className="text-white ml-2">{session.performanceMetrics.consistencyScore.toFixed(0)}%</span>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* AI Analysis */}
             <div className="bg-gradient-to-br from-indigo-900/50 to-purple-900/50 border border-indigo-500/30 rounded-2xl p-6 mb-8 relative overflow-hidden">
@@ -197,23 +258,26 @@ useEffect(() => {
                 )}
             </div>
 
-            {/* Debug Info (only show if there was an error) */}
-            {loadError && (
-                <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3 mb-4 text-xs">
-                    <p className="text-yellow-300 font-semibold mb-1">⚠️ 调试信息</p>
-                    <p className="text-yellow-200/70">评分: {session.accuracyScore.toFixed(1)} | 矫正: {session.correctionCount}次</p>
-                    <p className="text-yellow-200/70 mt-1">时长: {session.duration}秒 | 项目: {exercise.name}</p>
-                    <p className="text-yellow-200/70 mt-1">请打开浏览器控制台查看详细日志</p>
+            {/* Debug Info */}
+            {(!session.poseAnalyses || session.poseAnalyses.length === 0) && (
+                <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4 text-xs">
+                    <p className="text-red-300 font-semibold mb-1">⚠️ 数据异常</p>
+                    <p className="text-red-200/70">未检测到姿态分析数据，可能原因：</p>
+                    <ul className="text-red-200/70 mt-1 ml-4 list-disc">
+                        <li>训练时状态未切换到 ACTIVE</li>
+                        <li>MediaPipe 初始化失败</li>
+                        <li>摄像头画面中看不到人体</li>
+                    </ul>
                     <button 
                         onClick={() => {
-                            console.log('=== 手动触发数据检查 ===');
-                            console.log('Session:', session);
-                            console.log('Exercise:', exercise);
+                            console.log('=== 手动数据检查 ===');
+                            console.log('完整 Session 对象:', session);
+                            console.log('完整 Exercise 对象:', exercise);
                             console.log('AI Report:', aiReport);
                         }}
-                        className="mt-2 text-yellow-300 underline hover:text-yellow-200"
+                        className="mt-2 text-red-300 underline hover:text-red-200"
                     >
-                        点击输出调试数据到控制台
+                        点击输出完整数据到控制台
                     </button>
                 </div>
             )}
