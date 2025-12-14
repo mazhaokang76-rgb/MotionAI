@@ -294,6 +294,9 @@ const handleFinish = () => {
 
     const landmarks = result.landmarks[0];
     
+    // 🔴 强制日志：无论什么状态都输出
+    const currentStatus = status;
+    
     // 🔴 重要：先计算角度，再检查错误
     let currentAngle = 0;
     let isError = false;
@@ -313,29 +316,29 @@ const handleFinish = () => {
             currentAngle = calculateAngle(leftHip, leftShoulder, leftElbow);
             setDebugAngle(Math.round(currentAngle));
             
-            console.log(`[Pose Check] 肩外展角度: ${currentAngle.toFixed(1)}°, 躯干偏差: ${(torsoError * 100).toFixed(1)}%`);
+            // 🔴 强制输出角度，无论状态
+            if (realtimeDataRef.current.poseAnalyses.length % 30 === 0) {
+                console.log(`[Pose Check] 状态=${currentStatus}, 肩外展角度=${currentAngle.toFixed(1)}°, 躯干偏差=${(torsoError * 100).toFixed(1)}%`);
+            }
             
             // 角度范围检查（更严格）
             if (currentAngle < 60) {
                 isError = true;
                 localFeedback = "手臂抬得太低了！";
-                if (status === 'ACTIVE') {
+                if (currentStatus === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.angleErrors++;
                 }
             } else if (currentAngle > 120) {
                 isError = true;
                 localFeedback = "手臂抬得过高了！";
-                if (status === 'ACTIVE') {
+                if (currentStatus === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.rangeErrors++;
                 }
             } else if (currentAngle >= 60 && currentAngle <= 80) {
-                // 在标准范围内
                 localFeedback = "姿势标准 ✅";
             } else if (currentAngle > 80 && currentAngle <= 100) {
-                // 略高但可接受
                 localFeedback = "动作正确，保持";
             } else if (currentAngle > 100 && currentAngle <= 120) {
-                // 偏高但未触发错误
                 localFeedback = "角度稍高，注意控制";
             }
             
@@ -343,12 +346,12 @@ const handleFinish = () => {
             if (!aligned && torsoError > 0.12) {
                 isError = true;
                 localFeedback = "身体歪斜！收紧核心";
-                if (status === 'ACTIVE') {
+                if (currentStatus === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.torsoErrors++;
                 }
             }
         } else {
-            console.warn('[Pose Check] 关键点不可见');
+            console.warn('[Pose Check] 关键点不可见 - 请确保整个上半身在镜头内');
             localFeedback = "请保持在镜头内";
         }
         
@@ -361,19 +364,20 @@ const handleFinish = () => {
             currentAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
             setDebugAngle(Math.round(currentAngle));
             
-            console.log(`[Pose Check] 肘屈伸角度: ${currentAngle.toFixed(1)}°`);
+            if (realtimeDataRef.current.poseAnalyses.length % 30 === 0) {
+                console.log(`[Pose Check] 状态=${currentStatus}, 肘屈伸角度=${currentAngle.toFixed(1)}°`);
+            }
 
-            // 肘关节屈伸检查
             if (currentAngle < 30) {
                 isError = true;
                 localFeedback = "弯曲过度了！";
-                if (status === 'ACTIVE') {
+                if (currentStatus === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.angleErrors++;
                 }
             } else if (currentAngle > 175) {
                 isError = true;
                 localFeedback = "手臂未完全伸直";
-                if (status === 'ACTIVE') {
+                if (currentStatus === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.rangeErrors++;
                 }
             } else if (currentAngle >= 30 && currentAngle <= 50) {
@@ -382,11 +386,10 @@ const handleFinish = () => {
                 localFeedback = "伸展角度标准 ✅";
             }
             
-            // 躯干稳定性
             if (!aligned && torsoError > 0.12) {
                 isError = true;
                 localFeedback = "身体晃动！保持稳定";
-                if (status === 'ACTIVE') {
+                if (currentStatus === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.torsoErrors++;
                 }
             }
@@ -396,8 +399,8 @@ const handleFinish = () => {
         }
     }
     
-    // 3. 🔴 重要：无论是否有错误，都记录数据（只在训练时）
-    if (status === 'ACTIVE' && currentAngle > 0) {
+    // 3. 🔴 关键修复：只在 ACTIVE 状态且有有效角度时记录
+    if (currentStatus === 'ACTIVE' && currentAngle > 0) {
         realtimeDataRef.current.poseAnalyses.push({
             angle: currentAngle,
             isCorrect: !isError,
@@ -409,12 +412,17 @@ const handleFinish = () => {
         if (realtimeDataRef.current.poseAnalyses.length % 30 === 0) {
             console.log(`[训练统计] 已记录 ${realtimeDataRef.current.poseAnalyses.length} 帧, 错误 ${realtimeDataRef.current.currentCorrections} 次, 评分 ${realtimeDataRef.current.currentScore.toFixed(1)}`);
         }
+    } else if (currentStatus !== 'ACTIVE' && currentAngle > 0) {
+        // 🔴 调试：状态不是 ACTIVE
+        if (realtimeDataRef.current.poseAnalyses.length === 0) {
+            console.warn(`[⚠️ 数据未记录] 当前状态=${currentStatus} (需要ACTIVE), 角度=${currentAngle.toFixed(1)}°`);
+        }
     }
 
     // 4. 应用反馈和更新计数器
     if (isError) {
         setFeedback(localFeedback);
-        if (status === 'ACTIVE') {
+        if (currentStatus === 'ACTIVE') {
             speak(localFeedback);
             vibrate();
             
@@ -427,7 +435,7 @@ const handleFinish = () => {
             });
             
             setScore(s => {
-                const newScore = Math.max(0, s - 0.8); // 增加扣分力度
+                const newScore = Math.max(0, s - 0.8);
                 realtimeDataRef.current.currentScore = newScore;
                 return newScore;
             });
@@ -675,7 +683,13 @@ const handleFinish = () => {
         
         {status === 'IDLE' && !isLoading && !cameraError && (
              <button 
-             onClick={() => { setStatus('ACTIVE'); speak("开始跟练"); }}
+             onClick={() => { 
+               console.log('🎬 用户点击"开始跟练"按钮');
+               console.log('🔄 状态切换: IDLE → ACTIVE');
+               setStatus('ACTIVE'); 
+               speak("开始跟练");
+               console.log('✅ 状态已设置为 ACTIVE，开始记录数据');
+             }}
              className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-full font-bold text-lg shadow-lg shadow-blue-500/30 transition-all active:scale-95 flex-1 mx-4"
          >
              开始跟练
