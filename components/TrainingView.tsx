@@ -493,13 +493,25 @@ const handleFinish = () => {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // 🔴 调试：检测是否被调用
     const results = detectPose(video, t);
 
     if (results && results.landmarks.length > 0) {
         const landmarks = results.landmarks[0];
+        
+        // 🔴 调试：每60帧输出一次检测状态
+        if (Math.floor(t / 1000) % 2 === 0 && t % 1000 < 50) {
+            console.log(`[Detection] 状态=${status}, 姿态点=${landmarks.length}, 已记录=${realtimeDataRef.current.poseAnalyses.length}帧`);
+        }
+        
         const { isError } = processLandmarks(results);
         
         drawSkeleton(ctx, landmarks, canvas.width, canvas.height, isError);
+    } else {
+        // 🔴 调试：未检测到人体
+        if (Math.floor(t / 1000) % 3 === 0 && t % 1000 < 50) {
+            console.warn(`[Detection] ⚠️ 未检测到人体姿态 (status=${status})`);
+        }
     }
   };
 
