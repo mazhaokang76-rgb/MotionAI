@@ -294,91 +294,140 @@ const handleFinish = () => {
 
     const landmarks = result.landmarks[0];
     
-    const { aligned, error: torsoError } = checkTorsoAlignment(landmarks);
+    // 🔴 重要：先计算角度，再检查错误
+    let currentAngle = 0;
     let isError = false;
     let localFeedback = "姿势标准";
+    
+    // 1. 检查躯干对齐
+    const { aligned, error: torsoError } = checkTorsoAlignment(landmarks);
+    
+    // 2. 根据运动类型计算关键角度
+    if (exercise.id === 'SHOULDER_ABDUCTION') {
+        const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+        const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+        const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
 
-    if (!aligned && torsoError > 0.15) {
-        isError = true;
-        localFeedback = "收紧核心，身体歪了！";
-        if (status === 'ACTIVE') {
-            realtimeDataRef.current.errorPatterns.torsoErrors++;
-        }
-    } else {
-        // 计算当前角度
-        let currentAngle = 0;
-        
-        if (exercise.id === 'SHOULDER_ABDUCTION') {
-            const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
-            const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
-            const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
-
+        // 检查关键点可见性
+        if (leftShoulder?.visibility > 0.5 && leftElbow?.visibility > 0.5 && leftHip?.visibility > 0.5) {
             currentAngle = calculateAngle(leftHip, leftShoulder, leftElbow);
             setDebugAngle(Math.round(currentAngle));
-
-            if (currentAngle < 70) {
+            
+            console.log(`[Pose Check] 肩外展角度: ${currentAngle.toFixed(1)}°, 躯干偏差: ${(torsoError * 100).toFixed(1)}%`);
+            
+            // 角度范围检查（更严格）
+            if (currentAngle < 60) {
                 isError = true;
-                localFeedback = "手臂抬高一点！";
+                localFeedback = "手臂抬得太低了！";
                 if (status === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.angleErrors++;
                 }
-            } else if (currentAngle > 115) {
+            } else if (currentAngle > 120) {
                 isError = true;
-                localFeedback = "太高了，放低一点！";
+                localFeedback = "手臂抬得过高了！";
                 if (status === 'ACTIVE') {
                     realtimeDataRef.current.errorPatterns.rangeErrors++;
                 }
+            } else if (currentAngle >= 60 && currentAngle <= 80) {
+                // 在标准范围内
+                localFeedback = "姿势标准 ✅";
+            } else if (currentAngle > 80 && currentAngle <= 100) {
+                // 略高但可接受
+                localFeedback = "动作正确，保持";
+            } else if (currentAngle > 100 && currentAngle <= 120) {
+                // 偏高但未触发错误
+                localFeedback = "角度稍高，注意控制";
             }
-        } else if (exercise.id === 'ELBOW_FLEXION') {
-            const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
-            const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
-            const leftWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
-
-            currentAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
-            setDebugAngle(Math.round(currentAngle));
-
-            if (currentAngle > 170) {
+            
+            // 躯干稳定性检查
+            if (!aligned && torsoError > 0.12) {
                 isError = true;
-                localFeedback = "手臂完全伸直！准备弯曲";
+                localFeedback = "身体歪斜！收紧核心";
                 if (status === 'ACTIVE') {
-                    realtimeDataRef.current.errorPatterns.angleErrors++;
-                }
-            } else if (currentAngle < 40) {
-                isError = true;
-                localFeedback = "弯曲角度太小！";
-                if (status === 'ACTIVE') {
-                    realtimeDataRef.current.errorPatterns.angleErrors++;
+                    realtimeDataRef.current.errorPatterns.torsoErrors++;
                 }
             }
+        } else {
+            console.warn('[Pose Check] 关键点不可见');
+            localFeedback = "请保持在镜头内";
         }
         
-        // 🔴 关键修复：记录姿态分析数据
-        if (status === 'ACTIVE') {
-            realtimeDataRef.current.poseAnalyses.push({
-                angle: currentAngle,
-                isCorrect: !isError,
-                timestamp: Date.now(),
-                feedback: localFeedback
-            });
+    } else if (exercise.id === 'ELBOW_FLEXION') {
+        const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+        const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+        const leftWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
+
+        if (leftShoulder?.visibility > 0.5 && leftElbow?.visibility > 0.5 && leftWrist?.visibility > 0.5) {
+            currentAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
+            setDebugAngle(Math.round(currentAngle));
+            
+            console.log(`[Pose Check] 肘屈伸角度: ${currentAngle.toFixed(1)}°`);
+
+            // 肘关节屈伸检查
+            if (currentAngle < 30) {
+                isError = true;
+                localFeedback = "弯曲过度了！";
+                if (status === 'ACTIVE') {
+                    realtimeDataRef.current.errorPatterns.angleErrors++;
+                }
+            } else if (currentAngle > 175) {
+                isError = true;
+                localFeedback = "手臂未完全伸直";
+                if (status === 'ACTIVE') {
+                    realtimeDataRef.current.errorPatterns.rangeErrors++;
+                }
+            } else if (currentAngle >= 30 && currentAngle <= 50) {
+                localFeedback = "弯曲角度标准 ✅";
+            } else if (currentAngle > 140 && currentAngle <= 175) {
+                localFeedback = "伸展角度标准 ✅";
+            }
+            
+            // 躯干稳定性
+            if (!aligned && torsoError > 0.12) {
+                isError = true;
+                localFeedback = "身体晃动！保持稳定";
+                if (status === 'ACTIVE') {
+                    realtimeDataRef.current.errorPatterns.torsoErrors++;
+                }
+            }
+        } else {
+            console.warn('[Pose Check] 关键点不可见');
+            localFeedback = "请保持在镜头内";
+        }
+    }
+    
+    // 3. 🔴 重要：无论是否有错误，都记录数据（只在训练时）
+    if (status === 'ACTIVE' && currentAngle > 0) {
+        realtimeDataRef.current.poseAnalyses.push({
+            angle: currentAngle,
+            isCorrect: !isError,
+            timestamp: Date.now(),
+            feedback: localFeedback
+        });
+        
+        // 每30帧输出一次统计
+        if (realtimeDataRef.current.poseAnalyses.length % 30 === 0) {
+            console.log(`[训练统计] 已记录 ${realtimeDataRef.current.poseAnalyses.length} 帧, 错误 ${realtimeDataRef.current.currentCorrections} 次, 评分 ${realtimeDataRef.current.currentScore.toFixed(1)}`);
         }
     }
 
-    // 应用反馈和更新计数器
+    // 4. 应用反馈和更新计数器
     if (isError) {
         setFeedback(localFeedback);
         if (status === 'ACTIVE') {
             speak(localFeedback);
             vibrate();
             
-            // 🔴 关键修复：同时更新 state 和 ref
+            // 更新 state 和 ref
             setCorrections(c => {
                 const newCount = c + 1;
                 realtimeDataRef.current.currentCorrections = newCount;
+                console.log(`[纠正] 第 ${newCount} 次: ${localFeedback}`);
                 return newCount;
             });
             
             setScore(s => {
-                const newScore = Math.max(0, s - 0.5);
+                const newScore = Math.max(0, s - 0.8); // 增加扣分力度
                 realtimeDataRef.current.currentScore = newScore;
                 return newScore;
             });
@@ -386,7 +435,7 @@ const handleFinish = () => {
             realtimeDataRef.current.errorPatterns.totalErrors++;
         }
     } else {
-        setFeedback("姿势标准 ✅");
+        setFeedback(localFeedback);
     }
 
     return { isError, feedbackMsg: localFeedback };
