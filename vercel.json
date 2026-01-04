@@ -37,11 +37,9 @@
     "api/*.ts": {
       "runtime": "nodejs18.x",
       "maxDuration": 10
-    }
-  },
-  "edgeFunctions": {
+    },
     "api/edge-*.ts": {
-      "memory": 128,
+      "runtime": "edge",
       "regions": ["hnd1", "iad1", "fra1"]
     }
   }
