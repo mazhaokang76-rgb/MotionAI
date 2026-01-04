@@ -39,7 +39,7 @@
       "maxDuration": 10
     },
     "api/edge-*.ts": {
-      "runtime": "edge"
+      "runtime": "edge-runtime@1.0.0"
     }
   }
 }
