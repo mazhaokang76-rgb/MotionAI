@@ -11,8 +11,8 @@ import { ExerciseConfig, ExerciseType, POSE_LANDMARKS } from './types';
 // 3. 修改下方的 GITHUB_USERNAME 和 REPO_NAME
 // ============================================================================
 
-const GITHUB_USERNAME = "mazhaokang76-rgb";     // 已更新为您的用户名
-const REPO_NAME = "neuromotion-assets";         // 已更新为您的仓库名
+const GITHUB_USERNAME = "mazhaokang76-rgb";     // 用户名
+const REPO_NAME = "neuromotion-assets";         // 仓库名
 const BRANCH = "main";                          // 分支名，默认为 main
 
 // 构建 jsDelivr CDN 链接
@@ -91,9 +91,9 @@ export const EXERCISES: Record<ExerciseType, ExerciseConfig> = {
   }
 };
 
-// Corrected URL for the MediaPipe Pose Landmarker Lite model
-// jsDelivr is also faster for this than storage.googleapis.com in China
-export const MEDIAPIPE_MODEL_ASSET_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm/pose_landmarker_lite.task"; 
+// Use the official Google Storage URL for the task file as it is not included in the npm package
+export const MEDIAPIPE_MODEL_ASSET_PATH = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"; 
+
 // Using 0.10.14 stable version for better compatibility
 export const WASM_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
 
