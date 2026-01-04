@@ -37,9 +37,6 @@
     "api/*.ts": {
       "runtime": "nodejs18.x",
       "maxDuration": 10
-    },
-    "api/edge-*.ts": {
-      "runtime": "edge-runtime@1.0.0"
     }
   }
 }
