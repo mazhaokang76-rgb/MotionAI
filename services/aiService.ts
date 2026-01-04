@@ -1,9 +1,74 @@
 import { WorkoutSession, ExerciseConfig } from "../types";
 
-// ===== 调试配置 =====
+// ===== 监控和日志配置 =====
 const DEBUG = true;
-const log = (...args: any[]) => DEBUG && console.log('[AI Service]', ...args);
-const error = (...args: any[]) => console.error('[AI Service] ❌', ...args);
+const ENABLE_MONITORING = true;
+
+// 日志级别: debug, info, warn, error
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+const LOG_LEVEL: LogLevel = (process.env.NODE_ENV === 'production' ? 'info' : 'debug') as LogLevel;
+
+const log = (...args: any[]) => {
+  if (DEBUG || LOG_LEVEL === 'debug') {
+    console.log('[AI Service]', new Date().toISOString(), ...args);
+  }
+};
+
+const info = (...args: any[]) => {
+  if (LOG_LEVEL === 'debug' || LOG_LEVEL === 'info') {
+    console.log('[AI Service] ℹ️', new Date().toISOString(), ...args);
+  }
+};
+
+const warn = (...args: any[]) => {
+  if (LOG_LEVEL !== 'error') {
+    console.warn('[AI Service] ⚠️', new Date().toISOString(), ...args);
+  }
+};
+
+const error = (...args: any[]) => {
+  console.error('[AI Service] ❌', new Date().toISOString(), ...args);
+};
+
+// 监控指标
+const monitoring = {
+  apiCalls: 0,
+  successfulCalls: 0,
+  failedCalls: 0,
+  errorTypes: {} as Record<string, number>,
+  
+  recordCall(success: boolean, errorType?: string) {
+    if (!ENABLE_MONITORING) return;
+    
+    this.apiCalls++;
+    if (success) {
+      this.successfulCalls++;
+    } else {
+      this.failedCalls++;
+      if (errorType) {
+        this.errorTypes[errorType] = (this.errorTypes[errorType] || 0) + 1;
+      }
+    }
+    
+    // 定期输出监控统计
+    if (this.apiCalls % 10 === 0) {
+      this.logStats();
+    }
+  },
+  
+  logStats() {
+    if (!ENABLE_MONITORING) return;
+    
+    const successRate = this.apiCalls > 0 ? Math.round((this.successfulCalls / this.apiCalls) * 100) : 0;
+    info('📊 API监控统计:', {
+      totalCalls: this.apiCalls,
+      successfulCalls: this.successfulCalls,
+      failedCalls: this.failedCalls,
+      successRate: `${successRate}%`,
+      errorTypes: this.errorTypes
+    });
+  }
+};
 
 // ===== API 端点配置 =====
 const getAPIEndpoint = (service: 'grok' | 'grok-complete' | 'gemini') => {

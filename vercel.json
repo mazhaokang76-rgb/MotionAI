@@ -9,5 +9,40 @@
       "source": "/api/:path*",
       "destination": "/api/:path*"
     }
-  ]
+  ],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "s-maxage=1, stale-while-revalidate=59"
+        }
+      ]
+    }
+  ],
+  "functions": {
+    "api/*.ts": {
+      "runtime": "nodejs18.x",
+      "maxDuration": 10
+    }
+  },
+  "edgeFunctions": {
+    "api/edge-*.ts": {
+      "memory": 128,
+      "regions": ["hnd1", "iad1", "fra1"]
+    }
+  }
 }

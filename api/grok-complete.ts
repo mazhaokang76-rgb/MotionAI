@@ -1,5 +1,5 @@
-// 完整的Grok AI代理 - 解决setHeader问题 + 完整API功能
-// 去除runtime: 'edge'配置，改用Node.js运行时
+// 完整的Grok AI代理 - 添加错误处理和重试机制
+// 支持Node.js运行时，兼容Vercel Serverless Functions
 
 export default async function handler(req, res) {
   console.log('[Complete Grok] Handler called, method:', req.method);
@@ -111,18 +111,69 @@ export default async function handler(req, res) {
       console.log('[Complete Grok] Temperature:', grokPayload.temperature);
       console.log('[Complete Grok] Max tokens:', grokPayload.max_tokens);
 
-      // 调用Grok AI API - 单次调用，无重试（简化版本）
-      const grokResponse = await fetch(GROK_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(grokPayload)
-      });
+      // 重试逻辑配置
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY = 1000; // 初始延迟1秒
+      let lastError;
 
-      console.log('[Complete Grok] Grok AI API response status:', grokResponse.status);
-      
+      // 调用Grok AI API - 添加重试机制
+      let grokResponse;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          console.log(`[Complete Grok] Attempt ${attempt}/${MAX_RETRIES} calling Grok AI API`);
+          
+          // 使用Promise.race实现超时处理，因为fetch API原生不支持timeout选项
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+          
+          try {
+            grokResponse = await fetch(GROK_API_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify(grokPayload),
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timeoutId);
+          }
+
+          console.log('[Complete Grok] Grok AI API response status:', grokResponse.status);
+          
+          // 如果成功或遇到无法重试的错误（如400, 401），跳出循环
+          if (grokResponse.ok || grokResponse.status < 500) {
+            break;
+          }
+          
+          // 服务器错误，等待后重试
+          console.log(`[Complete Grok] Server error ${grokResponse.status}, retrying in ${RETRY_DELAY * attempt}ms...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
+          
+        } catch (error) {
+          lastError = error;
+          console.error(`[Complete Grok] Attempt ${attempt} failed with error:`, error.message);
+          
+          // 网络错误，等待后重试
+          if (attempt < MAX_RETRIES) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
+          }
+        }
+      }
+
+      // 检查是否所有重试都失败
+      if (!grokResponse && lastError) {
+        console.error('[Complete Grok] All retry attempts failed:', lastError);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to connect to Grok AI API',
+          hint: 'Network error or API server unavailable',
+          retryAttempts: MAX_RETRIES
+        });
+        return;
+      }
+
       const responseText = await grokResponse.text();
       console.log('[Complete Grok] Raw response preview:', responseText.substring(0, 100) + '...');
 
@@ -137,11 +188,29 @@ export default async function handler(req, res) {
           errorData = { error: responseText };
         }
 
-        res.status(grokResponse.status).json({
+        // 根据错误类型返回更详细的信息
+        let statusCode = grokResponse.status;
+        let errorMessage = errorData.error || 'Grok AI API Error';
+        let hint = errorData.hint || 'Check your API key and request format';
+
+        // 特殊错误处理
+        if (statusCode === 429) {
+          errorMessage = 'Grok AI API rate limit exceeded';
+          hint = 'Please try again later or reduce request frequency';
+        } else if (statusCode === 401) {
+          errorMessage = 'Invalid Grok AI API Key';
+          hint = 'Please check your API key configuration';
+        } else if (statusCode === 403) {
+          errorMessage = 'Grok AI API access denied';
+          hint = 'Your API key may not have sufficient permissions';
+        }
+
+        res.status(statusCode).json({
           success: false,
-          error: errorData.error || 'Grok AI API Error',
-          hint: errorData.hint || 'Check your API key and request format',
-          status: grokResponse.status
+          error: errorMessage,
+          hint: hint,
+          status: statusCode,
+          retryAttempts: MAX_RETRIES
         });
         return;
       }
@@ -180,7 +249,8 @@ export default async function handler(req, res) {
         content: content,
         usage: grokData.usage || null,
         model: grokData.model || 'grok-4-1-fast-non-reasoning',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        retryAttempts: MAX_RETRIES
       });
 
     } catch (error: any) {
@@ -189,7 +259,8 @@ export default async function handler(req, res) {
       res.status(500).json({
         success: false,
         error: 'Internal server error',
-        hint: error.message || 'Check server logs for details'
+        hint: error.message || 'Check server logs for details',
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
     return;
@@ -203,5 +274,8 @@ export default async function handler(req, res) {
   });
 }
 
-// 移除runtime: 'edge'配置，让Vercel使用默认的Node.js运行时
-// 这应该能解决 setHeader is not a function 错误
+// 支持Node.js运行时配置
+export const config = {
+  runtime: 'nodejs18.x',
+  maxDuration: 10 // 最大执行时间10秒
+};
