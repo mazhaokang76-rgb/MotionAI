@@ -276,6 +276,6 @@ export default async function handler(req, res) {
 
 // 支持Node.js运行时配置
 export const config = {
-  runtime: 'nodejs18.x',
+  runtime: 'nodejs',
   maxDuration: 10 // 最大执行时间10秒
 };
